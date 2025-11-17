@@ -11,21 +11,36 @@
         <artifactId>spring-boot-starter-parent</artifactId>
         <version>3.3.2</version>
     </parent>
-    <properties><java.version>17</java.version></properties>
+    <properties><java.version>17</java.version>
+        <evosuiteVersion>1.0.6</evosuiteVersion>
+    </properties>
+    <pluginRepositories>
+        <pluginRepository>
+            <id>evosuite-repo</id>
+            <name>EvoSuite Repository</name>
+            <url>https://www.evosuite.org/m2</url>
+        </pluginRepository>
+    </pluginRepositories>
 
     <dependencies>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-thymeleaf</artifactId></dependency>
+        <dependency>
+            <groupId>org.evosuite</groupId>
+            <artifactId>evosuite-standalone-runtime</artifactId>
+            <version>${evosuiteVersion}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
     <build>
 
     <plugins>
         <!-- ... deine anderen Plugins ... -->
 
-       <plugin>
+        <plugin>
             <groupId>org.evosuite.plugins</groupId>
             <artifactId>evosuite-maven-plugin</artifactId>
-            <version>1.2.0</version>
+            <version>${evosuiteVersion}</version>
             <configuration>
                 <targetClasses>
                     <param>com.example.hackathon2025.*</param>
