@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><title th:text="${title}">Hackathon</title></head>
+<body>
+<h1 th:text="${title}">Hackathon 2025 Demo</h1>
+<p>Spring Web + REST API Demo</p>
+<button onclick="callApi()">Test REST</button>
+<p id="apiResult"></p>
+<script>
+async function callApi(){
+ const res = await fetch('/api/hello');
+ const j = await res.json();
+ document.getElementById('apiResult').innerText = JSON.stringify(j);
+}
+</script>
+</body>
+</html>
