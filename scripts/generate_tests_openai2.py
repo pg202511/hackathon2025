@@ -41,31 +41,36 @@ PROMPT_TEMPLATE = (
 
 def extract_text_from_response(resp) -> str:
     """
-    Holt den Text aus der Responses-API-Struktur:
-    typischerweise resp.output[0].content[0].text.value
-    Wir sind defensiv und behandeln sowohl Objekt- als auch Dict-Form.
+    Holt den Text aus der Responses-API-Struktur.
+    Wir iterieren ueber alle output-Items und sammeln deren text-Felder.
     """
     try:
+        texts = []
+
         if not hasattr(resp, "output") or not resp.output:
             return ""
 
-        first_output = resp.output[0]
-        content_list = getattr(first_output, "content", [])
-        texts = []
+        for out in resp.output:
+            content_list = getattr(out, "content", None)
+            if not content_list:
+                continue
 
-        for item in content_list:
-            # neuer SDK-Typ
-            if hasattr(item, "text") and hasattr(item.text, "value"):
-                val = item.text.value
-                if isinstance(val, str):
-                    texts.append(val)
-            # dict-basierte Struktur (zur Sicherheit)
-            elif isinstance(item, dict):
-                tx = item.get("text")
-                if isinstance(tx, dict):
-                    val = tx.get("value")
+            for item in content_list:
+                # Neuer SDK Typ: ResponseOutputText(text="...")
+                if hasattr(item, "text"):
+                    val = item.text
+                    # falls spaeter mal text.value genutzt wird
+                    if hasattr(val, "value"):
+                        val = val.value
                     if isinstance(val, str):
                         texts.append(val)
+                # Fallback: dict-Struktur
+                elif isinstance(item, dict):
+                    tx = item.get("text")
+                    if isinstance(tx, dict):
+                        val = tx.get("value")
+                        if isinstance(val, str):
+                            texts.append(val)
 
         return "\n".join(texts).strip()
     except Exception as e:
@@ -73,10 +78,12 @@ def extract_text_from_response(resp) -> str:
         return ""
 
 
+
 def clean_java_code(content: str) -> str:
     """
-    Entfernt Markdown und alles vor der ersten 'class'-Definition.
-    Gibt einen leeren String zurück, wenn es nicht nach Java aussieht.
+    Entfernt ggf. Markdown-Wrapper (```java ... ```),
+    laesst aber ansonsten den kompletten Java-Code stehen
+    (inkl. package/imports).
     """
     if not content:
         return ""
@@ -90,15 +97,10 @@ def clean_java_code(content: str) -> str:
                     content = parts[i + 1]
                 break
 
-    # Alles vor 'class' entfernen
-    m = re.search(r"\bclass\b", content)
-    if not m:
-        return ""
+    cleaned = content.strip()
 
-    cleaned = content[m.start():].strip()
-
-    # ganz grober Sanity-Check: muss { und } enthalten
-    if "{" not in cleaned or "}" not in cleaned:
+    # ganz grober Sanity-Check: muss zumindest "class" enthalten
+    if "class " not in cleaned:
         return ""
 
     return cleaned
