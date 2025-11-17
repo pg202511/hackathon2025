@@ -51,6 +51,23 @@ jobs:
           AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
         run: python scripts/generate_tests_openai2.py
 
+      - name: Show generated tests
+        run: |
+          echo "==== Alle Test-Dateien in src/test/java ===="
+          if [ -d src/test/java ]; then
+            find src/test/java -maxdepth 5 -type f -print
+          else
+            echo "src/test/java existiert nicht."
+          fi
+
+          echo ""
+          echo "==== Inhalt von HelloRestControllerTest.java (erste 120 Zeilen) ===="
+          if [ -f src/test/java/com/example/hackathon2025/HelloRestControllerTest.java ]; then
+            sed -n '1,120p' src/test/java/com/example/hackathon2025/HelloRestControllerTest.java
+          else
+            echo "Datei src/test/java/com/example/hackathon2025/HelloRestControllerTest.java nicht gefunden."
+          fi
+
       - name: Run all tests
         run: mvn -B test
 
