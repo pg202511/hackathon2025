@@ -32,13 +32,13 @@ jobs:
       - name: Build project
         run: mvn -B -q -DskipTests package
 
-      - name: Generate tests (EvoSuite)
-        run: |
-          mvn -B evosuite:generate evosuite:export
-          if [ -d "target/evosuite-tests" ]; then
-            mkdir -p src/test/java
-            cp -R target/evosuite-tests/* src/test/java/ || true
-          fi
+      #- name: Generate tests (EvoSuite)
+      #  run: |
+      #    mvn -B evosuite:generate evosuite:export
+      #   if [ -d "target/evosuite-tests" ]; then
+      #      mkdir -p src/test/java
+      #      cp -R target/evosuite-tests/* src/test/java/ || true
+      #    fi
 
       - name: Generate tests (OpenAI)
         env:
