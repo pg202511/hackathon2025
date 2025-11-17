@@ -131,6 +131,10 @@ def generate_test_for_file(java_file: str):
         ],
     )
 
+    print("==== RAW AZURE RESPONSE ====")
+    print(repr(resp))
+    print("==== END RAW AZURE RESPONSE ====")
+
     raw = extract_text_from_response(resp)
     code = clean_java_code(raw)
 
