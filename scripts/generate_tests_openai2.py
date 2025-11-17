@@ -67,18 +67,17 @@ def generate_test_for_file(java_file: str):
 
     # Responses API statt chat.completions
     resp = client.responses.create(
-        model=deployment,   # Deployment-Name aus Azure
+        model=deployment,
         input=[
             {
                 "role": "system",
-                "content": "Du erzeugst saubere, kompakte JUnit-5-Tests in Java.",
+                "content": "Du erzeugst saubere, kompakte JUnit-5-Tests in Java."
             },
             {
                 "role": "user",
-                "content": prompt,
-            },
-        ],
-        temperature=0.2,
+                "content": prompt
+            }
+        ]
     )
 
     content = extract_text_from_response(resp)
