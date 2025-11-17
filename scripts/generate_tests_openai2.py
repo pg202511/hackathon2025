@@ -1,23 +1,23 @@
 # -*- coding: utf-8 -*-
 import os
 import glob
-import textwrap
-
 from openai import AzureOpenAI
 
 # Konfiguration aus Umgebungsvariablen
 endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
 api_key = os.getenv("AZURE_OPENAI_API_KEY")
-deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")  # <- wichtig
 
 if not endpoint or not api_key or not deployment:
-    raise SystemExit("Azure OpenAI Konfiguration (AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY / AZURE_OPENAI_DEPLOYMENT) ist nicht vollstaendig gesetzt.")
+    raise SystemExit(
+        "Azure OpenAI Konfiguration fehlt: "
+        "AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY / AZURE_OPENAI_DEPLOYMENT"
+    )
 
-# Azure OpenAI Client
 client = AzureOpenAI(
     azure_endpoint=endpoint,
     api_key=api_key,
-    api_version="2024-10-21",  # ggf. an deine Azure-API-Version anpassen
+    api_version="2025-04-01-preview",  # ggf. an deine Ressource anpassen
 )
 
 SOURCE_PATTERN = "src/main/java/**/*.java"
@@ -44,7 +44,7 @@ def generate_test_for_file(java_file: str):
     print(f"Generating tests for: {java_file}")
 
     response = client.chat.completions.create(
-        model=deployment,  # bei Azure ist das der Deployment-Name
+        model=deployment,  # <- hier wird das Deployment wirklich benutzt
         messages=[
             {
                 "role": "system",
@@ -60,7 +60,7 @@ def generate_test_for_file(java_file: str):
 
     content = response.choices[0].message.content
 
-    # Falls der Code in ```java ... ```-Blocks kommt, extrahieren
+    # Java-Code aus ```java ... ```-Block extrahieren, falls vorhanden
     if "```" in content:
         parts = content.split("```")
         for i, p in enumerate(parts):
@@ -69,7 +69,6 @@ def generate_test_for_file(java_file: str):
                     content = parts[i + 1].strip()
                 break
 
-    # Zielpfad: src/test/java/<package>/<ClassName>Test.java
     rel_path = os.path.relpath(java_file, "src/main/java")
     pkg_dir = os.path.dirname(rel_path)
     base_name = os.path.splitext(os.path.basename(java_file))[0]
