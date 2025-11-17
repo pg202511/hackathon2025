@@ -15,12 +15,13 @@ if not endpoint or not api_key or not deployment:
         "AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY / AZURE_OPENAI_DEPLOYMENT"
     )
 
-# Endpoint in den Secrets OHNE api-version:
+# WICHTIG:
+# AZURE_OPENAI_ENDPOINT in den Secrets OHNE api-version:
 # z.B. https://swc-eh-oai-openai-1.openai.azure.com/
 client = AzureOpenAI(
     azure_endpoint=endpoint,
     api_key=api_key,
-    api_version="2025-04-01-preview",  # aus deinem Endpoint
+    api_version="2025-04-01-preview",  # aus deiner Endpoint-URL
 )
 
 SOURCE_PATTERN = "src/main/java/**/*.java"
@@ -39,20 +40,48 @@ PROMPT_TEMPLATE = (
 
 
 def extract_text_from_response(resp) -> str:
-    # Responses-API Struktur defensiv auslesen
+    """
+    Holt den Text aus der Responses-API-Struktur:
+    typischerweise resp.output[0].content[0].text.value
+    Wir sind defensiv und behandeln sowohl Objekt- als auch Dict-Form.
+    """
     try:
+        if not hasattr(resp, "output") or not resp.output:
+            return ""
+
         first_output = resp.output[0]
-        first_content = first_output.content[0]
-        if hasattr(first_content, "text") and hasattr(first_content.text, "value"):
-            return first_content.text.value
-        return str(first_content)
+        content_list = getattr(first_output, "content", [])
+        texts = []
+
+        for item in content_list:
+            # neuer SDK-Typ
+            if hasattr(item, "text") and hasattr(item.text, "value"):
+                val = item.text.value
+                if isinstance(val, str):
+                    texts.append(val)
+            # dict-basierte Struktur (zur Sicherheit)
+            elif isinstance(item, dict):
+                tx = item.get("text")
+                if isinstance(tx, dict):
+                    val = tx.get("value")
+                    if isinstance(val, str):
+                        texts.append(val)
+
+        return "\n".join(texts).strip()
     except Exception as e:
         print(f"Warnung: Konnte Text aus Response nicht extrahieren: {e}")
-        return str(resp)
+        return ""
 
 
 def clean_java_code(content: str) -> str:
-    # Falls der Code in ```java ... ``` steht, extrahieren
+    """
+    Entfernt Markdown und alles vor der ersten 'class'-Definition.
+    Gibt einen leeren String zurück, wenn es nicht nach Java aussieht.
+    """
+    if not content:
+        return ""
+
+    # Falls in ```java ... ``` eingebettet
     if "```" in content:
         parts = content.split("```")
         for i, p in enumerate(parts):
@@ -61,14 +90,14 @@ def clean_java_code(content: str) -> str:
                     content = parts[i + 1]
                 break
 
-    # Alles vor dem ersten 'class' wegschneiden
+    # Alles vor 'class' entfernen
     m = re.search(r"\bclass\b", content)
     if not m:
         return ""
 
-    cleaned = content[m.start() :].strip()
+    cleaned = content[m.start():].strip()
 
-    # ganz grober Check: es muss wenigstens eine schliessende Klammer haben
+    # ganz grober Sanity-Check: muss { und } enthalten
     if "{" not in cleaned or "}" not in cleaned:
         return ""
 
@@ -76,7 +105,7 @@ def clean_java_code(content: str) -> str:
 
 
 def generate_test_for_file(java_file: str):
-    # Optional: bestimmte Klassen auslassen (z.B. Application-Klasse)
+    # Optional: bestimmte Klassen skippen, z.B. Application-Klasse
     if java_file.endswith("Application.java"):
         print(f"Skippe Application-Klasse: {java_file}")
         return
