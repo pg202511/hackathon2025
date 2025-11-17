@@ -20,7 +20,7 @@ if not endpoint or not api_key or not deployment:
 client = AzureOpenAI(
     azure_endpoint=endpoint,
     api_key=api_key,
-    api_version="2025-04-01-preview",  # aus deiner Azure-URL
+    api_version="2025-04-01-preview",  # aus deinem Endpoint
 )
 
 SOURCE_PATTERN = "src/main/java/**/*.java"
@@ -39,6 +39,7 @@ PROMPT_TEMPLATE = (
 
 
 def extract_text_from_response(resp) -> str:
+    # Responses-API Struktur defensiv auslesen
     try:
         first_output = resp.output[0]
         first_content = first_output.content[0]
@@ -60,17 +61,26 @@ def clean_java_code(content: str) -> str:
                     content = parts[i + 1]
                 break
 
-    # Markdowns und Erklaerungen grob entfernen
-    # alles vor der ersten "class" Zeile abschneiden
-    match = re.search(r"\bclass\b", content)
-    if not match:
-        return ""  # nichts brauchbares gefunden
+    # Alles vor dem ersten 'class' wegschneiden
+    m = re.search(r"\bclass\b", content)
+    if not m:
+        return ""
 
-    content = content[match.start() :]
-    return content.strip()
+    cleaned = content[m.start() :].strip()
+
+    # ganz grober Check: es muss wenigstens eine schliessende Klammer haben
+    if "{" not in cleaned or "}" not in cleaned:
+        return ""
+
+    return cleaned
 
 
 def generate_test_for_file(java_file: str):
+    # Optional: bestimmte Klassen auslassen (z.B. Application-Klasse)
+    if java_file.endswith("Application.java"):
+        print(f"Skippe Application-Klasse: {java_file}")
+        return
+
     with open(java_file, "r", encoding="utf-8") as f:
         source_code = f.read()
 
