@@ -1,30 +1,26 @@
+# -*- coding: utf-8 -*-
 import os
 import glob
 import openai
 
 api_key = os.getenv("OPENAI_API_KEY")
 if not api_key:
-    raise SystemExit("OPENAI_API_KEY ist nicht gesetzt")
+    raise SystemExit("Environment variable OPENAI_API_KEY is not set")
 openai.api_key = api_key
 
 SOURCE_PATTERN = "src/main/java/**/*.java"
 TEST_ROOT = "src/test/java"
 
-PROMPT_TEMPLATE = """Erstelle JUnit 5 Tests für die folgende Java-Klasse.
-
-Vorgaben:
-- Verwende JUnit 5.
-- Nutze sprechende Testmethodennamen.
-- Generiere mehrere sinnvolle Testfälle.
-- Gib nur reinen Java-Code aus (keine Erklärungen).
-
-Klasse:
-
-```java
-{source_code}
-```
-"""
-
+PROMPT_TEMPLATE = (
+    "Erstelle JUnit 5 Tests fuer die folgende Java-Klasse.\n\n"
+    "Vorgaben:\n"
+    "- Verwende JUnit 5.\n"
+    "- Nutze sprechende Testmethodennamen.\n"
+    "- Generiere mehrere sinnvolle Testfaelle.\n"
+    "- Gib nur reinen Java-Code aus (keine Erklaerungen).\n\n"
+    "Klasse:\n\n"
+    "{source_code}\n"
+)
 
 def generate_test_for_file(java_file: str):
     with open(java_file, "r", encoding="utf-8") as f:
@@ -32,7 +28,7 @@ def generate_test_for_file(java_file: str):
 
     prompt = PROMPT_TEMPLATE.format(source_code=source_code)
 
-    print(f"? Generiere Tests für: {java_file}")
+    print(f"Generating tests for: {java_file}")
 
     response = openai.ChatCompletion.create(
         model="gpt-4.1-mini",
@@ -45,6 +41,7 @@ def generate_test_for_file(java_file: str):
 
     content = response["choices"][0]["message"]["content"]
 
+    # extract java code if in backtick block
     if "```" in content:
         parts = content.split("```")
         for i, p in enumerate(parts):
@@ -64,8 +61,7 @@ def generate_test_for_file(java_file: str):
     with open(out_file, "w", encoding="utf-8") as f:
         f.write(content.strip() + "\n")
 
-    print(f"? Test generiert: {out_file}")
-
+    print(f"Test written: {out_file}")
 
 def main():
     for java_file in glob.glob(SOURCE_PATTERN, recursive=True):
