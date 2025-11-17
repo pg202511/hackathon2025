@@ -40,10 +40,16 @@ jobs:
       #      cp -R target/evosuite-tests/* src/test/java/ || true
       #    fi
 
-      - name: Generate tests (OpenAI)
+      #- name: Generate tests (OpenAI)
+      #  env:
+      #    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      #  run: python scripts/generate_tests_openai.py
+      - name: Generate tests (Azure OpenAI)
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: python scripts/generate_tests_openai.py
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+        run: python scripts/generate_tests_openai2.py
 
       - name: Run all tests
         run: mvn -B test
