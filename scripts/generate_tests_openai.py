@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 import os
 import glob
-import openai
+import textwrap
 
-api_key = os.getenv("OPENAI_API_KEY")
-if not api_key:
-    raise SystemExit("Environment variable OPENAI_API_KEY is not set")
-openai.api_key = api_key
+from openai import OpenAI
+
+# Der Client liest OPENAI_API_KEY automatisch aus der Umgebung
+client = OpenAI()
 
 SOURCE_PATTERN = "src/main/java/**/*.java"
 TEST_ROOT = "src/test/java"
@@ -22,6 +22,7 @@ PROMPT_TEMPLATE = (
     "{source_code}\n"
 )
 
+
 def generate_test_for_file(java_file: str):
     with open(java_file, "r", encoding="utf-8") as f:
         source_code = f.read()
@@ -30,25 +31,34 @@ def generate_test_for_file(java_file: str):
 
     print(f"Generating tests for: {java_file}")
 
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model="gpt-4.1-mini",
         messages=[
-            {"role": "system", "content": "Du erzeugst JUnit-5-Tests."},
-            {"role": "user", "content": prompt}
+            {
+                "role": "system",
+                "content": "Du erzeugst saubere, kompakte JUnit-5-Tests in Java.",
+            },
+            {
+                "role": "user",
+                "content": prompt,
+            },
         ],
-        temperature=0.2
+        temperature=0.2,
     )
 
-    content = response["choices"][0]["message"]["content"]
+    content = response.choices[0].message.content
 
-    # extract java code if in backtick block
+    # Falls der Code in ```java ... ```-Blocks kommt, extrahieren
     if "```" in content:
         parts = content.split("```")
         for i, p in enumerate(parts):
             if p.strip().startswith("java"):
-                content = parts[i + 1].strip()
+                # naechster Block ist der eigentliche Code
+                if i + 1 < len(parts):
+                    content = parts[i + 1].strip()
                 break
 
+    # Zielpfad: src/test/java/<package>/<ClassName>Test.java
     rel_path = os.path.relpath(java_file, "src/main/java")
     pkg_dir = os.path.dirname(rel_path)
     base_name = os.path.splitext(os.path.basename(java_file))[0]
@@ -63,9 +73,16 @@ def generate_test_for_file(java_file: str):
 
     print(f"Test written: {out_file}")
 
+
 def main():
-    for java_file in glob.glob(SOURCE_PATTERN, recursive=True):
+    files = glob.glob(SOURCE_PATTERN, recursive=True)
+    if not files:
+        print("No Java source files found.")
+        return
+
+    for java_file in files:
         generate_test_for_file(java_file)
+
 
 if __name__ == "__main__":
     main()
