@@ -12,8 +12,36 @@
         <version>3.3.2</version>
     </parent>
     <properties><java.version>17</java.version></properties>
+
     <dependencies>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-thymeleaf</artifactId></dependency>
     </dependencies>
+    <build>
+
+    <plugins>
+        <!-- ... deine anderen Plugins ... -->
+
+       <plugin>
+            <groupId>org.evosuite.plugins</groupId>
+            <artifactId>evosuite-maven-plugin</artifactId>
+            <version>1.2.0</version>
+            <configuration>
+                <targetClasses>
+                    <param>com.example.hackathon2025.*</param>
+                </targetClasses>
+                <targetDir>${project.build.directory}/evosuite-tests</targetDir>
+            </configuration>
+            <executions>
+                <execution>
+                    <goals>
+                        <goal>generate</goal>
+                        <goal>export</goal>
+                    </goals>
+                </execution>
+            </executions>
+        </plugin>
+
+    </plugins>
+    </build>
 </project>
