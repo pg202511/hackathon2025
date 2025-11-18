@@ -1,4 +1,20 @@
 #!/usr/bin/env python3
+"""
+generate_tests_with_azure_openai.py
+
+Erzeugt oder aktualisiert JUnit-5-Tests für geänderte Java-Klassen
+mittels Azure OpenAI.
+
+Erwartet Umgebungsvariablen:
+- AZURE_OPENAI_ENDPOINT       z.B. https://<resource>.openai.azure.com
+- AZURE_OPENAI_API_KEY
+- AZURE_OPENAI_DEPLOYMENT     Name des Deployments, z.B. gpt-4o
+
+Optional (für exakte Diffs):
+- GIT_BASE_SHA
+- GIT_HEAD_SHA
+"""
+
 import os
 import subprocess
 import argparse
@@ -6,37 +22,86 @@ import pathlib
 import re
 import textwrap
 import json
+from typing import List, Optional, Tuple
 
 import requests
 
-API_VERSION = "2024-02-15-preview"  # ggf. anpassen
-
-def run(cmd: list[str]) -> str:
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
-    if result.returncode != 0:
-        raise RuntimeError(f"Command failed: {' '.join(cmd)}\n{result.stderr}")
-    return result.stdout.strip()
+# ggf. an deine Azure OpenAI API-Version anpassen
+API_VERSION = "2024-02-15-preview"
 
 
-def get_changed_java_files(source_dir: pathlib.Path) -> list[pathlib.Path]:
+# ---------------------------------------------------------
+# Hilfsfunktionen für Git und Dateisystem
+# ---------------------------------------------------------
+def run(cmd: List[str]) -> subprocess.CompletedProcess:
+    """Führt ein Kommando aus und gibt das CompletedProcess zurück."""
+    return subprocess.run(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+
+def get_changed_java_files(source_dir: pathlib.Path) -> List[pathlib.Path]:
     """
-    Findet geänderte Java-Dateien im source_dir (verglichen mit origin/main).
+    Findet geänderte Java-Dateien im source_dir.
+
+    Strategie:
+    - Wenn GIT_BASE_SHA + GIT_HEAD_SHA vorhanden: git diff BASE...HEAD
+    - sonst: git diff HEAD~1...HEAD (Fallback)
+    - Wenn daraus keine Java-Files resultieren: Fallback auf *alle* Java-Files unter source_dir
     """
+    base = os.getenv("GIT_BASE_SHA")
+    head = os.getenv("GIT_HEAD_SHA")
+
+    print(f"[INFO] GIT_BASE_SHA={base}, GIT_HEAD_SHA={head}")
+
+    diff_output = ""
+    # Versuche gezielten Diff
     try:
-        diff_output = run(["git", "diff", "--name-only", "origin/main...HEAD"])
-    except RuntimeError:
-        # Fallback: alle Files, wenn origin/main im CI nicht vorhanden ist
-        diff_output = run(["git", "diff", "--name-only"])
+        if base and head:
+            print(f"[INFO] Verwende Diff: {base}...{head}")
+            proc = run(["git", "diff", "--name-only", f"{base}...{head}"])
+        else:
+            print("[INFO] Verwende Fallback-Diff: HEAD~1...HEAD")
+            proc = run(["git", "diff", "--name-only", "HEAD~1...HEAD"])
 
-    changed_files = []
+        if proc.returncode != 0:
+            print(f"[WARN] git diff Fehlermeldung:\n{proc.stderr}")
+        diff_output = proc.stdout
+    except Exception as e:
+        print(f"[WARN] Konnte git diff nicht ausführen: {e}")
+        diff_output = ""
+
+    changed_files: List[pathlib.Path] = []
+
     for line in diff_output.splitlines():
+        line = line.strip()
+        if not line:
+            continue
         p = pathlib.Path(line)
         if p.suffix == ".java" and source_dir in p.parents:
             changed_files.append(p)
-    return changed_files
+
+    if changed_files:
+        print("[INFO] Geänderte Java-Dateien (aus git diff):")
+        for f in changed_files:
+            print(f"  - {f}")
+        return changed_files
+
+    # Fallback: Alle Java-Dateien unter source_dir
+    print("[INFO] Keine geänderten Java-Dateien via git diff gefunden.")
+    print("[INFO] Fallback: verwende ALLE Java-Sourcen unter", source_dir)
+    all_java = list(source_dir.rglob("*.java"))
+    for f in all_java:
+        print(f"  - {f}")
+    return all_java
 
 
-def extract_package_and_class(java_source: str) -> tuple[str | None, str | None]:
+def extract_package_and_class(java_source: str) -> Tuple[Optional[str], Optional[str]]:
+    """Extrahiert package-Name und Klassenname aus Java-Quelltext."""
     package_match = re.search(r"package\s+([a-zA-Z0-9_.]+)\s*;", java_source)
     class_match = re.search(r"(public\s+)?class\s+([A-Za-z0-9_]+)", java_source)
     package_name = package_match.group(1) if package_match else None
@@ -44,6 +109,9 @@ def extract_package_and_class(java_source: str) -> tuple[str | None, str | None]
     return package_name, class_name
 
 
+# ---------------------------------------------------------
+# Azure OpenAI Aufruf
+# ---------------------------------------------------------
 def call_azure_openai(prompt: str) -> str:
     endpoint = os.environ["AZURE_OPENAI_ENDPOINT"].rstrip("/")
     api_key = os.environ["AZURE_OPENAI_API_KEY"]
@@ -62,9 +130,10 @@ def call_azure_openai(prompt: str) -> str:
                 "role": "system",
                 "content": (
                     "You are a senior Java developer and test engineer. "
-                    "Generate high-quality JUnit 5 test classes. "
+                    "Generate high-quality, compilable JUnit 5 test classes. "
                     "Focus on meaningful edge cases, null handling, and business rules. "
-                    "Do NOT change production code; only produce test code."
+                    "Do NOT change production code; only produce test code. "
+                    "Use JUnit 5 (org.junit.jupiter.api.*) and, if appropriate, Mockito."
                 ),
             },
             {
@@ -72,33 +141,43 @@ def call_azure_openai(prompt: str) -> str:
                 "content": prompt,
             },
         ],
+        "temperature": 0.2,
         "max_tokens": 1200,
     }
 
     resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=60)
-    resp.raise_for_status()
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Azure OpenAI Fehler {resp.status_code}: {resp.text}")
     data = resp.json()
     content = data["choices"][0]["message"]["content"]
     return content
 
 
 def strip_code_fences(text: str) -> str:
-    # Entfernt ```java ... ``` Hüllen
+    """
+    Entfernt ```java ...``` oder ``` ...``` Codeblöcke, falls vorhanden,
+    und gibt nur den reinen Java-Code zurück.
+    """
     match = re.search(r"```(?:java)?\s*(.*?)```", text, re.DOTALL)
     if match:
         return match.group(1).strip()
     return text.strip()
 
 
-def generate_test_for_file(source_file: pathlib.Path, source_dir: pathlib.Path, test_dir: pathlib.Path):
+# ---------------------------------------------------------
+# Generierung der Testdateien
+# ---------------------------------------------------------
+def generate_test_for_file(source_file: pathlib.Path,
+                           source_dir: pathlib.Path,
+                           test_dir: pathlib.Path) -> None:
     java_source = source_file.read_text(encoding="utf-8")
     package_name, class_name = extract_package_and_class(java_source)
     if not class_name:
         print(f"[WARN] Keine Klasse in {source_file} erkannt, überspringe.")
         return
 
+    # Pfad relativ zum source_dir abbilden
     rel = source_file.relative_to(source_dir)
-    # gleicher Paketpfad, aber Dateiname mit 'Test'
     test_rel = rel.with_name(f"{class_name}Test.java")
     target_path = test_dir / test_rel
     target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -109,10 +188,10 @@ def generate_test_for_file(source_file: pathlib.Path, source_dir: pathlib.Path, 
 
     - Nutze JUnit 5 (`org.junit.jupiter.api.*`).
     - Erzeuge sinnvolle Testmethoden: Normalfall, Edge Cases, Fehlerfälle.
-    - Verwende wenn sinnvoll Mockito (`org.mockito.*`) zum Mocking.
+    - Verwende, wenn sinnvoll, Mockito (`org.mockito.*`) zum Mocking.
     - Stelle sicher, dass der Code kompilierbar ist.
-    - Wenn es bereits etablierte Public-Methoden gibt, teste sie explizit.
-    - Nutze die gleiche package-Deklaration wie die Quellklasse (aber im Test-Paket).
+    - Teste explizit die öffentlich sichtbaren Methoden.
+    - Nutze die gleiche package-Deklaration wie die Quellklasse.
 
     Quell-Datei (Pfad): {source_file}
     Quell-Code:
@@ -128,33 +207,52 @@ def generate_test_for_file(source_file: pathlib.Path, source_dir: pathlib.Path, 
 
     # Sicherstellen, dass package-Deklaration vorhanden ist
     if package_name and f"package {package_name}" not in test_code:
-        # einfache Heuristik: package-Zeile am Anfang einfügen
         test_code = f"package {package_name};\n\n{test_code}"
 
     target_path.write_text(test_code, encoding="utf-8")
     print(f"[OK] Test geschrieben: {target_path}")
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--source-dir", required=True, help="Pfad zu src/main/java")
-    parser.add_argument("--test-dir", required=True, help="Pfad zu src/test/java")
+# ---------------------------------------------------------
+# main
+# ---------------------------------------------------------
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Erzeugt/aktualisiert JUnit-Tests mittels Azure OpenAI für geänderte Java-Dateien."
+    )
+    parser.add_argument(
+        "--source-dir",
+        required=True,
+        help="Pfad zu src/main/java",
+    )
+    parser.add_argument(
+        "--test-dir",
+        required=True,
+        help="Pfad zu src/test/java",
+    )
     args = parser.parse_args()
 
     source_dir = pathlib.Path(args.source_dir).resolve()
     test_dir = pathlib.Path(args.test_dir).resolve()
 
+    if not source_dir.exists():
+        raise SystemExit(f"Source-Verzeichnis existiert nicht: {source_dir}")
+
     changed_files = get_changed_java_files(source_dir)
+
     if not changed_files:
-        print("[INFO] Keine geänderten Java-Dateien im Source-Verzeichnis gefunden.")
+        print("[INFO] Keine Java-Dateien gefunden – nichts zu tun.")
         return
 
-    print("[INFO] Geänderte Java-Dateien:")
+    print("[INFO] Java-Dateien, für die Tests erzeugt werden:")
     for f in changed_files:
         print(f"  - {f}")
 
     for f in changed_files:
-        generate_test_for_file(f, source_dir, test_dir)
+        try:
+            generate_test_for_file(f, source_dir, test_dir)
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Generieren von Tests für {f}: {e}")
 
 
 if __name__ == "__main__":
