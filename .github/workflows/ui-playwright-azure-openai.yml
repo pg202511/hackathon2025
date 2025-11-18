@@ -132,6 +132,10 @@ jobs:
           echo "Committe folgende Änderungen:"
           echo "$CHANGES"
 
+          # Vor dem Commit sicherstellen, dass wir auf dem aktuellen Stand des Branches sind
+          git fetch origin "${TARGET_BRANCH}"
+          git rebase "origin/${TARGET_BRANCH}" || true
+
           git add tests
           git commit -m "chore: update AI-generated UI tests (Playwright/Azure OpenAI)" || {
             echo "Nichts zu committen (evtl. identischer Inhalt)."
@@ -139,4 +143,8 @@ jobs:
           }
 
           echo "Pushe auf PR-Branch: ${TARGET_BRANCH}"
-          git push origin HEAD:"${TARGET_BRANCH}"
+          # Bei AI-generiertem Code ist ein force-with-lease ok
+          git push --force-with-lease origin HEAD:"${TARGET_BRANCH}" || {
+            echo "Warnung: Push ist fehlgeschlagen (z.B. wegen Race Condition). Auto-Update der Tests wurde für diesen Run übersprungen."
+            exit 0
+          }
