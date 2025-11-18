@@ -1,51 +1,48 @@
 package com.example.hackathon2025;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
+import org.springframework.ui.ExtendedModelMap;
 import org.springframework.ui.Model;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 class WebControllerTest {
 
-    private WebController controller;
+    @Test
+    void index_shouldReturnIndexViewAndSetTitleAttribute() {
+        WebController controller = new WebController();
+        ExtendedModelMap model = new ExtendedModelMap();
 
-    @BeforeEach
-    void setUp() {
-        controller = new WebController();
+        String viewName = controller.index(model);
+
+        assertEquals("index", viewName, "Expected view name to be 'index'");
+        assertTrue(model.containsAttribute("title"), "Model should contain 'title' attribute");
+        assertEquals("Hackathon 2025 Demo", model.get("title"));
     }
 
     @Test
-    void index_shouldReturnIndexView_andAddTitleAttribute() {
-        // Arrange
-        Model model = mock(Model.class);
+    void index_shouldOverwriteExistingTitleAttribute() {
+        WebController controller = new WebController();
+        ExtendedModelMap model = new ExtendedModelMap();
+        // pre-populate with a different title
+        model.addAttribute("title", "Old Title");
+        model.addAttribute("other", 123);
 
-        // Act
-        String view = controller.index(model);
+        String viewName = controller.index(model);
 
-        // Assert
-        assertEquals("index", view, "Controller should return view name 'index'");
-        verify(model, times(1)).addAttribute("title", "Hackathon 2025 Demo");
-        verifyNoMoreInteractions(model);
+        assertEquals("index", viewName);
+        // title should be overwritten by controller
+        assertEquals("Hackathon 2025 Demo", model.get("title"));
+        // other attributes should remain untouched
+        assertEquals(123, model.get("other"));
     }
 
     @Test
-    void index_withNullModel_shouldThrowNullPointerException() {
-        // If a null Model is passed, addAttribute will cause a NPE — ensure this behavior is visible.
-        assertThrows(NullPointerException.class, () -> controller.index(null));
-    }
+    void index_shouldThrowWhenModelIsNull() {
+        WebController controller = new WebController();
+        Model nullModel = null;
 
-    @Test
-    void index_whenModelThrowsException_shouldPropagateException() {
-        // Arrange
-        Model model = mock(Model.class);
-        doThrow(new IllegalStateException("model failure")).when(model).addAttribute(anyString(), any());
-
-        // Act & Assert
-        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> controller.index(model));
-        assertEquals("model failure", ex.getMessage());
-        verify(model, times(1)).addAttribute("title", "Hackathon 2025 Demo");
+        assertThrows(NullPointerException.class, () -> controller.index(nullModel),
+                "Calling index with null Model should throw NullPointerException");
     }
 }

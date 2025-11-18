@@ -17,7 +17,6 @@ jobs:
     env:
       APP_PORT: 8080
 
-      # Azure OpenAI Konfiguration (aus GitHub Secrets)
       AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
       AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
       AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
@@ -27,8 +26,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
 
-      # Java / Spring Boot Build
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -39,7 +38,6 @@ jobs:
       - name: Build Spring Boot app (skip tests)
         run: mvn -B -ntp clean package -DskipTests
 
-      # Node / Playwright
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -55,7 +53,6 @@ jobs:
           npm install -D @playwright/test
           npx playwright install --with-deps
 
-      # Python für das Azure-OpenAI-UI-Test-Generator-Skript
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -66,7 +63,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
 
-      # App starten, UI-Tests generieren und Playwright ausführen
       - name: Start app, generate UI tests and run Playwright
         run: |
           echo "Starte Spring Boot Anwendung mit: mvn spring-boot:run"
@@ -95,10 +91,10 @@ jobs:
           echo "Generiere Playwright-UI-Tests mittels Azure OpenAI..."
           python scripts/generate_ui_tests_with_azure_openai.py
 
-          echo "Führe Playwright-Tests aus..."
-          npx playwright test
+          echo "Führe Playwright-Tests aus (mit HTML-Report)..."
+          npx playwright test --reporter=html
 
-      # App sauber stoppen
+
       - name: Stop app
         if: always()
         run: |
@@ -110,7 +106,6 @@ jobs:
             echo "Keine app.pid gefunden – vermutlich lief die App nicht mehr."
           fi
 
-      # Playwright-Report hochladen (optional)
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
@@ -118,17 +113,13 @@ jobs:
           name: playwright-report
           path: playwright-report/
 
-      # Änderungen am Test committen & pushen
       - name: Commit & push generated UI tests
         if: >
           success() &&
-          (
-            github.event_name == 'push' ||
-            (github.event_name == 'pull_request' &&
-             github.event.pull_request.head.repo.full_name == github.repository)
-          )
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
         env:
-          TARGET_BRANCH: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+          TARGET_BRANCH: ${{ github.head_ref }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -142,11 +133,19 @@ jobs:
           echo "Committe folgende Änderungen:"
           echo "$CHANGES"
 
+          # Vor dem Commit sicherstellen, dass wir auf dem aktuellen Stand des Branches sind
+          git fetch origin "${TARGET_BRANCH}"
+          git rebase "origin/${TARGET_BRANCH}" || true
+
           git add tests
           git commit -m "chore: update AI-generated UI tests (Playwright/Azure OpenAI)" || {
             echo "Nichts zu committen (evtl. identischer Inhalt)."
             exit 0
           }
 
-          echo "Pushe auf Branch: ${TARGET_BRANCH}"
-          git push origin HEAD:"${TARGET_BRANCH}"
+          echo "Pushe auf PR-Branch: ${TARGET_BRANCH}"
+          # Bei AI-generiertem Code ist ein force-with-lease ok
+          git push --force-with-lease origin HEAD:"${TARGET_BRANCH}" || {
+            echo "Warnung: Push ist fehlgeschlagen (z.B. wegen Race Condition). Auto-Update der Tests wurde für diesen Run übersprungen."
+            exit 0
+          }

@@ -145,7 +145,7 @@ def call_azure_openai(prompt: str) -> str:
         "api-key": api_key,
     }
 
-    # WICHTIG: kein max_tokens, keine temperature → kompatibel mit z.B. o3-mini
+    # Kein max_tokens, keine temperature → kompatibel mit neueren Azure-Modellen
     body = {
         "messages": [
             {
@@ -155,7 +155,11 @@ def call_azure_openai(prompt: str) -> str:
                     "Generate high-quality, compilable JUnit 5 test classes. "
                     "Focus on meaningful edge cases, null handling, and business rules. "
                     "Do NOT change production code; only produce test code. "
-                    "Use JUnit 5 (org.junit.jupiter.api.*) and, if appropriate, Mockito."
+                    "Use JUnit 5 (org.junit.jupiter.api.*) and, if appropriate, Mockito. "
+                    "Prefer plain unit tests without starting heavy frameworks when possible. "
+                    "For Spring MVC controllers, DO NOT load a Spring context; "
+                    "instantiate the controller directly and use simple Model implementations "
+                    "like org.springframework.ui.ExtendedModelMap."
                 ),
             },
             {
@@ -211,12 +215,29 @@ def generate_test_for_file(source_file: pathlib.Path,
     Hier ist eine Java-Klasse aus einem produktiven Service.
     Erzeuge eine passende JUnit-5-Testklasse. Anforderungen:
 
+    Allgemein:
     - Nutze JUnit 5 (`org.junit.jupiter.api.*`).
     - Erzeuge sinnvolle Testmethoden: Normalfall, Edge Cases, Fehlerfälle.
     - Verwende, wenn sinnvoll, Mockito (`org.mockito.*`) zum Mocking.
     - Stelle sicher, dass der Code kompilierbar ist.
     - Teste explizit die öffentlich sichtbaren Methoden.
+    - Erzeuge vorzugsweise Plain-Unit-Tests, die ohne Spring-Kontext auskommen.
+    - Verwende KEINE Annotationen wie `@SpringBootTest`, `@WebMvcTest`, `@ExtendWith(SpringExtension.class)`
+      ohne Notwendigkeit.
+
+    Speziell für Spring MVC Controller:
+    - Wenn eine Methode ein Argument vom Typ `org.springframework.ui.Model` hat,
+      verwende im Test eine Implementierung wie:
+          `Model model = new org.springframework.ui.ExtendedModelMap();`
+      und rufe die Methode direkt auf, z.B.:
+          `String viewName = controller.index(model);`
+    - Verwende NICHT `ModelMap`, wenn die Methode `Model` erwartet (vermeide Typkonflikte).
+    - Nur wenn die Signatur explizit `ModelMap` verwendet, darfst du `ModelMap` verwenden.
+    - Starte keinen Spring ApplicationContext im Test, wenn es vermeidbar ist.
+
+    Package / Struktur:
     - Nutze die gleiche package-Deklaration wie die Quellklasse.
+    - Lege die Testklasse im entsprechenden Testpaket an (gleicher Pfad unter src/test/java).
 
     Quell-Datei (Pfad): {source_file}
     Quell-Code:
@@ -257,7 +278,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    source_dir = pathlib.Path(args.source-dir).resolve() if hasattr(args, "source-dir") else pathlib.Path(args.source_dir).resolve()
+    source_dir = pathlib.Path(args.source_dir).resolve()
     test_dir = pathlib.Path(args.test_dir).resolve()
 
     if not source_dir.exists():
