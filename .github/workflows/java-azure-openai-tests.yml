@@ -3,8 +3,6 @@ name: Java CI mit Azure OpenAI Testgenerierung
 on:
   pull_request:
     branches: [ main ]
-  push:
-    branches: [ main ]
 
 permissions:
   contents: write
@@ -22,17 +20,12 @@ jobs:
       AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
       AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
 
-      # für Diff:
-      GIT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
-      GIT_HEAD_SHA: ${{ github.sha }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # WICHTIG: bei PRs den PR-Branch auschecken, sonst main
-          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+          ref: ${{ github.head_ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -82,7 +75,6 @@ jobs:
       - name: Commit & push generated tests
         if: >
           success() &&
-          github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository
         env:
           TARGET_BRANCH: ${{ github.head_ref }}
@@ -91,28 +83,26 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          CHANGES=$(git status --porcelain "tests" || true)
+          CHANGES=$(git status --porcelain "${TEST_DIR}" || true)
           if [ -z "$CHANGES" ]; then
-            echo "Keine neuen oder geänderten UI-Testdateien. Kein Commit nötig."
+            echo "Keine neuen oder geänderten Testdateien. Kein Commit nötig."
             exit 0
           fi
 
           echo "Committe folgende Änderungen:"
           echo "$CHANGES"
 
-          # Vor dem Commit sicherstellen, dass wir auf dem aktuellen Stand des Branches sind
           git fetch origin "${TARGET_BRANCH}"
           git rebase "origin/${TARGET_BRANCH}" || true
 
-          git add tests
-          git commit -m "chore: update AI-generated UI tests (Playwright/Azure OpenAI)" || {
+          git add "${TEST_DIR}"
+          git commit -m "chore: add AI-generated unit tests via Azure OpenAI" || {
             echo "Nichts zu committen (evtl. identischer Inhalt)."
             exit 0
           }
 
           echo "Pushe auf PR-Branch: ${TARGET_BRANCH}"
-          # Bei AI-generiertem Code ist ein force-with-lease ok
           git push --force-with-lease origin HEAD:"${TARGET_BRANCH}" || {
-            echo "Warnung: Push ist fehlgeschlagen (z.B. wegen Race Condition). Auto-Update der Tests wurde für diesen Run übersprungen."
+            echo "Warnung: Push ist fehlgeschlagen (Race Condition o.ä.). Auto-Update der Tests für diesen Run übersprungen."
             exit 0
           }
