@@ -1,59 +1,77 @@
 package com.example.hackathon2025;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.DisplayName;
 import org.springframework.ui.ExtendedModelMap;
 import org.springframework.ui.Model;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 class WebControllerTest {
 
-    @Test
-    @DisplayName("index should return view name 'index' and add title attribute to model")
-    void indexReturnsViewAndAddsTitle() {
-        WebController controller = new WebController();
-        ExtendedModelMap model = new ExtendedModelMap();
+    private WebController controller;
 
-        String view = controller.index(model);
-
-        assertEquals("index", view, "Expected view name to be 'index'");
-        assertTrue(model.containsKey("title"), "Model should contain 'title' attribute");
-        assertEquals("Hackathon 2025 Demo", model.get("title"), "Title attribute should be set to the demo text");
+    @BeforeEach
+    void setUp() {
+        controller = new WebController();
     }
 
     @Test
-    @DisplayName("index should overwrite existing title attribute in the model")
-    void indexOverwritesExistingTitle() {
-        WebController controller = new WebController();
+    void index_shouldReturnIndexViewAndSetTitleAttribute() {
+        Model model = new ExtendedModelMap();
+
+        String view = controller.index(model);
+
+        assertEquals("index", view, "The controller should return the 'index' view name.");
+        assertTrue(((ExtendedModelMap) model).asMap().containsKey("title"), "Model should contain a 'title' attribute.");
+        assertEquals("Hackathon 2025 Demo",
+                ((ExtendedModelMap) model).asMap().get("title"),
+                "The 'title' attribute should be set to the expected demo text.");
+    }
+
+    @Test
+    void index_shouldOverwriteExistingTitleAttribute() {
         ExtendedModelMap model = new ExtendedModelMap();
         model.addAttribute("title", "Old Title");
 
         String view = controller.index(model);
 
         assertEquals("index", view);
-        assertEquals("Hackathon 2025 Demo", model.get("title"), "Existing title should be overwritten with new value");
+        assertEquals("Hackathon 2025 Demo", model.asMap().get("title"),
+                "The controller should overwrite any existing 'title' attribute with the demo text.");
     }
 
     @Test
-    @DisplayName("index should call addAttribute on the provided Model")
-    void indexUsesModelAddAttributeWhenModelIsMocked() {
-        WebController controller = new WebController();
-        Model mockModel = mock(Model.class);
+    void index_shouldPreserveOtherAttributes() {
+        ExtendedModelMap model = new ExtendedModelMap();
+        model.addAttribute("foo", 42);
 
-        String view = controller.index(mockModel);
+        String view = controller.index(model);
 
         assertEquals("index", view);
-        verify(mockModel).addAttribute("title", "Hackathon 2025 Demo");
+        assertEquals(42, model.asMap().get("foo"), "Attributes other than 'title' should be preserved.");
+        assertEquals("Hackathon 2025 Demo", model.asMap().get("title"));
     }
 
     @Test
-    @DisplayName("index should throw NullPointerException when model is null")
-    void indexThrowsOnNullModel() {
-        WebController controller = new WebController();
-
+    void index_whenModelIsNull_shouldThrowNullPointerException() {
         assertThrows(NullPointerException.class, () -> controller.index(null),
-                "Calling index with null Model should throw NullPointerException");
+                "Calling index with a null Model should throw a NullPointerException.");
+    }
+
+    @Test
+    void multipleInvocations_withDifferentModels_areIndependent() {
+        ExtendedModelMap model1 = new ExtendedModelMap();
+        ExtendedModelMap model2 = new ExtendedModelMap();
+        model2.addAttribute("title", "previous");
+
+        String view1 = controller.index(model1);
+        String view2 = controller.index(model2);
+
+        assertEquals("index", view1);
+        assertEquals("index", view2);
+        assertEquals("Hackathon 2025 Demo", model1.asMap().get("title"));
+        assertEquals("Hackathon 2025 Demo", model2.asMap().get("title"),
+                "Each invocation should set the title on the provided Model independently.");
     }
 }
