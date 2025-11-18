@@ -5,23 +5,29 @@ test('hackathon2025 UI: initial render and REST interaction', async ({ page }) =
 
   await expect(page).toHaveTitle(/Hackathon/);
 
-  const heading = page.getByRole('heading', { level: 1 });
-  await expect(heading).toHaveText('Hackathon 2025 Demo');
+  const mainHeading = page.getByRole('heading', { level: 1 });
+  await expect(mainHeading).toHaveText('Hackathon 2025 Demo');
 
-  const button = page.getByRole('button', { name: 'Test REST' });
-  await expect(button).toBeVisible();
+  const testRestButton = page.getByRole('button', { name: 'Test REST' });
+  await expect(testRestButton).toBeVisible();
 
   const apiResult = page.locator('#apiResult');
   const count = await apiResult.count();
   expect(count).toBeGreaterThan(0);
   await expect(apiResult).toHaveText('');
 
-  await button.click();
+  await testRestButton.click();
 
   await expect(apiResult).not.toHaveText('', { timeout: 5000 });
 
   const raw = await apiResult.innerText();
-  const parsed = JSON.parse(raw);
+  let parsed: any = null;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    parsed = null;
+  }
+
   expect(parsed).not.toBeNull();
   expect(typeof parsed).toBe('object');
   expect(Object.keys(parsed).length).toBeGreaterThan(0);
