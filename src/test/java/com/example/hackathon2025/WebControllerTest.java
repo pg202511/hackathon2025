@@ -2,11 +2,10 @@ package com.example.hackathon2025;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
+import org.springframework.ui.ExtendedModelMap;
 import org.springframework.ui.Model;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 class WebControllerTest {
 
@@ -18,34 +17,53 @@ class WebControllerTest {
     }
 
     @Test
-    void index_shouldReturnIndexView_andAddTitleAttribute() {
-        // Arrange
-        Model model = mock(Model.class);
+    void index_shouldReturnIndexViewAndSetTitleAttribute() {
+        Model model = new ExtendedModelMap();
 
-        // Act
-        String view = controller.index(model);
+        String viewName = controller.index(model);
 
-        // Assert
-        assertEquals("index", view, "Controller should return view name 'index'");
-        verify(model, times(1)).addAttribute("title", "Hackathon 2025 Demo");
-        verifyNoMoreInteractions(model);
+        assertEquals("index", viewName, "The view name should be 'index'");
+        assertTrue(model.asMap().containsKey("title"), "Model should contain 'title' attribute");
+        assertEquals("Hackathon 2025 Demo", model.asMap().get("title"),
+                "The 'title' attribute should be 'Hackathon 2025 Demo'");
+        // Ensure no unexpected attributes were added
+        assertEquals(1, model.asMap().size(), "Model should contain exactly one attribute after invocation");
+    }
+
+    @Test
+    void index_shouldOverrideExistingTitleAttributeIfPresent() {
+        ExtendedModelMap model = new ExtendedModelMap();
+        model.addAttribute("title", "Old Title");
+        model.addAttribute("other", "keepMe");
+
+        String viewName = controller.index(model);
+
+        assertEquals("index", viewName);
+        assertEquals("Hackathon 2025 Demo", model.asMap().get("title"),
+                "Existing 'title' attribute should be overwritten by controller");
+        // Ensure other attributes are preserved
+        assertEquals("keepMe", model.asMap().get("other"), "Other attributes should remain untouched");
+        assertTrue(model.asMap().containsKey("other"));
     }
 
     @Test
     void index_withNullModel_shouldThrowNullPointerException() {
-        // If a null Model is passed, addAttribute will cause a NPE — ensure this behavior is visible.
+        // The controller expects a non-null Model. Passing null should result in a NullPointerException
         assertThrows(NullPointerException.class, () -> controller.index(null));
     }
 
     @Test
-    void index_whenModelThrowsException_shouldPropagateException() {
-        // Arrange
-        Model model = mock(Model.class);
-        doThrow(new IllegalStateException("model failure")).when(model).addAttribute(anyString(), any());
+    void index_multipleInvocations_shouldBeIdempotentRegardingTitleValue() {
+        ExtendedModelMap model = new ExtendedModelMap();
 
-        // Act & Assert
-        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> controller.index(model));
-        assertEquals("model failure", ex.getMessage());
-        verify(model, times(1)).addAttribute("title", "Hackathon 2025 Demo");
+        String first = controller.index(model);
+        String second = controller.index(model);
+
+        assertEquals("index", first);
+        assertEquals("index", second);
+        assertEquals("Hackathon 2025 Demo", model.asMap().get("title"),
+                "Repeated invocations should keep the same title value");
+        // Still only one title entry
+        assertEquals(1, model.asMap().size());
     }
 }
