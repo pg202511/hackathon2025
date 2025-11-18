@@ -2,7 +2,7 @@
 """
 generate_tests_with_azure_openai.py
 
-Erzeugt oder aktualisiert JUnit-5-Tests für geänderte Java-Klassen
+Erzeugt oder aktualisiert JUnit-5-Tests für geänderte  Java-Klassen
 mittels Azure OpenAI.
 
 Erwartet Umgebungsvariablen:
