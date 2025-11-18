@@ -109,6 +109,27 @@ def extract_package_and_class(java_source: str) -> Tuple[Optional[str], Optional
     return package_name, class_name
 
 
+# ---------- Bootstrap-Erkennung ---------------------------------------------
+def is_bootstrap_class(java_source: str, class_name: Optional[str]) -> bool:
+    """
+    Erkenne typische Bootstrap-Klassen, für die wir KEINE Tests generieren wollen.
+
+    Heuristik:
+    - Klasse enthält @SpringBootApplication
+    - oder Klassenname endet auf 'Application'
+    """
+    if not class_name:
+        return False
+
+    if "@SpringBootApplication" in java_source:
+        return True
+
+    if class_name.endswith("Application"):
+        return True
+
+    return False
+
+
 # ---------------------------------------------------------
 # Azure OpenAI Aufruf
 # ---------------------------------------------------------
@@ -126,22 +147,23 @@ def call_azure_openai(prompt: str) -> str:
 
     body = {
         "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are a senior Java developer and test engineer. "
-                    "Generate high-quality, compilable JUnit 5 test classes. "
-                    "Focus on meaningful edge cases, null handling, and business rules. "
-                    "Do NOT change production code; only produce test code. "
-                    "Use JUnit 5 (org.junit.jupiter.api.*) and, if appropriate, Mockito."
-                ),
-            },
-            {
-                "role": "user",
-                "content": prompt,
-            },
+          {
+              "role": "system",
+              "content": (
+                  "You are a senior Java developer and test engineer. "
+                  "Generate high-quality, compilable JUnit 5 test classes. "
+                  "Focus on meaningful edge cases, null handling, and business rules. "
+                  "Do NOT change production code; only produce test code. "
+                  "Use JUnit 5 (org.junit.jupiter.api.*) and, if appropriate, Mockito."
+              ),
+          },
+          {
+              "role": "user",
+              "content": prompt,
+          },
         ],
-        "max_completion_tokens": 1200,
+        "temperature": 0.2,
+        "max_tokens": 1200,
     }
 
     resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=60)
@@ -173,6 +195,11 @@ def generate_test_for_file(source_file: pathlib.Path,
     package_name, class_name = extract_package_and_class(java_source)
     if not class_name:
         print(f"[WARN] Keine Klasse in {source_file} erkannt, überspringe.")
+        return
+
+    # Bootstrap-Klassen (z. B. Hackathon2025Application) überspringen
+    if is_bootstrap_class(java_source, class_name):
+        print(f"[INFO] Bootstrap-Klasse erkannt ({class_name}), keine Tests generiert.")
         return
 
     # Pfad relativ zum source_dir abbilden
