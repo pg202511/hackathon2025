@@ -2,7 +2,7 @@
 """
 generate_tests_with_azure_openai.py
 
-Erzeugt oder aktualisiert JUnit-5-Tests für geänderte Java-Klassen
+Erzeugt oder aktualisiert JUnit-5-Tests für geänderte  Java-Klassen
 mittels Azure OpenAI.
 
 Erwartet Umgebungsvariablen:
@@ -263,7 +263,7 @@ def generate_test_for_file(source_file: pathlib.Path,
 # main
 # ---------------------------------------------------------
 def main() -> None:
-    parser = argparse.ArgumentParser(
+   ''' parser = argparse.ArgumentParser(
         description="Erzeugt/aktualisiert JUnit-Tests mittels Azure OpenAI für geänderte Java-Dateien."
     )
     parser.add_argument(
@@ -299,6 +299,33 @@ def main() -> None:
             generate_test_for_file(f, source_dir, test_dir)
         except Exception as e:
             print(f"[ERROR] Fehler beim Generieren von Tests für {f}: {e}")
+            '''
+    def main() -> None:
+    parser = argparse.ArgumentParser(...)
+    ...
+    source_dir = pathlib.Path(args.source_dir).resolve()
+    test_dir = pathlib.Path(args.test_dir).resolve()
+
+    if not source_dir.exists():
+        raise SystemExit(f"Source-Verzeichnis existiert nicht: {source_dir}")
+
+    # Statt git diff: ALLE Java-Dateien
+    target_files = sorted(source_dir.rglob("*.java"))
+
+    if not target_files:
+        print("[INFO] Keine Java-Dateien gefunden – nichts zu tun.")
+        return
+
+    print("[INFO] Java-Dateien, für die Tests erzeugt werden:")
+    for f in target_files:
+        print(f"  - {f}")
+
+    for f in target_files:
+        try:
+            generate_test_for_file(f, source_dir, test_dir)
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Generieren von Tests für {f}: {e}")
+
 
 
 if __name__ == "__main__":
