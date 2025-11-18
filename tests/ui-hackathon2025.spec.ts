@@ -1,35 +1,30 @@
 import { test, expect } from '@playwright/test';
 
-test('hackathon2025 UI: initial render and REST interaction', async ({ page }) => {
+test('index page shows title, heading, Test REST button and API result updates after click', async ({ page }) => {
   await page.goto('http://localhost:8080/');
 
   await expect(page).toHaveTitle(/Hackathon/);
 
-  const h1 = page.getByRole('heading', { level: 1 });
-  await expect(h1).toHaveText(/Hackathon 2025 Demo/);
+  const heading = page.getByRole('heading', { level: 1, name: /Hackathon 2025 Demo/ });
+  await expect(heading).toHaveText(/Hackathon 2025 Demo/);
 
-  const testRestButton = page.getByRole('button', { name: 'Test REST' });
-  await expect(testRestButton).toBeVisible();
+  const button = page.getByRole('button', { name: 'Test REST' });
+  await expect(button).toBeVisible();
 
-  const apiResult = page.locator('#apiResult');
-  const count = await apiResult.count();
-  expect(count).toBeGreaterThan(0);
+  const api = page.locator('#apiResult');
+  await expect(api).toBeAttached();
+  await expect(api).toHaveText('');
 
-  await expect(apiResult).toHaveText('');
+  await button.click();
 
-  await testRestButton.click();
+  await expect(api).not.toHaveText('');
 
-  await expect(apiResult).not.toHaveText('', { timeout: 5000 });
-
-  const text = await apiResult.innerText();
-  let parsed: any = null;
-  try {
-    parsed = JSON.parse(text);
-  } catch (e) {
-    parsed = null;
-  }
-  expect(parsed).not.toBeNull();
-  expect(typeof parsed).toBe('object');
+  const raw = (await api.textContent()) ?? '';
+  const text = raw.trim();
+  expect(text.length).toBeGreaterThan(0);
+  expect(() => JSON.parse(text)).not.toThrow();
+  const parsed = JSON.parse(text);
+  expect(parsed && typeof parsed === 'object').toBeTruthy();
   expect(Object.keys(parsed).length).toBeGreaterThan(0);
   expect(text.toLowerCase()).toContain('hello');
 });
