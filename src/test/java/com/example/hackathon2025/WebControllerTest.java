@@ -9,40 +9,46 @@ import static org.junit.jupiter.api.Assertions.*;
 class WebControllerTest {
 
     @Test
-    void index_shouldReturnIndexViewAndSetTitleAttribute() {
+    void index_whenCalled_returnsIndexViewAndSetsTitle() {
         WebController controller = new WebController();
-        ExtendedModelMap model = new ExtendedModelMap();
+        Model model = new ExtendedModelMap();
 
         String viewName = controller.index(model);
 
         assertEquals("index", viewName, "Expected view name to be 'index'");
-        assertTrue(model.containsAttribute("title"), "Model should contain 'title' attribute");
-        assertEquals("Hackathon 2025 Demo", model.get("title"));
+        assertTrue(model.asMap().containsKey("title"), "Model should contain 'title' attribute");
+        assertEquals("Hackathon 2025 Demo", model.asMap().get("title"), "Title attribute should match expected value");
     }
 
     @Test
-    void index_shouldOverwriteExistingTitleAttribute() {
+    void index_overwritesExistingTitleAttribute() {
         WebController controller = new WebController();
-        ExtendedModelMap model = new ExtendedModelMap();
-        // pre-populate with a different title
+        Model model = new ExtendedModelMap();
         model.addAttribute("title", "Old Title");
-        model.addAttribute("other", 123);
 
         String viewName = controller.index(model);
 
         assertEquals("index", viewName);
-        // title should be overwritten by controller
-        assertEquals("Hackathon 2025 Demo", model.get("title"));
-        // other attributes should remain untouched
-        assertEquals(123, model.get("other"));
+        assertEquals("Hackathon 2025 Demo", model.asMap().get("title"), "Existing title should be overwritten with demo title");
     }
 
     @Test
-    void index_shouldThrowWhenModelIsNull() {
+    void index_preservesOtherAttributes() {
         WebController controller = new WebController();
-        Model nullModel = null;
+        Model model = new ExtendedModelMap();
+        model.addAttribute("otherKey", 123);
 
-        assertThrows(NullPointerException.class, () -> controller.index(nullModel),
-                "Calling index with null Model should throw NullPointerException");
+        String viewName = controller.index(model);
+
+        assertEquals("index", viewName);
+        assertEquals(123, model.asMap().get("otherKey"), "Other attributes should be preserved");
+        assertEquals("Hackathon 2025 Demo", model.asMap().get("title"));
+    }
+
+    @Test
+    void index_withNullModel_throwsNullPointerException() {
+        WebController controller = new WebController();
+
+        assertThrows(NullPointerException.class, () -> controller.index(null), "Passing null model should throw NullPointerException");
     }
 }
