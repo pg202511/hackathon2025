@@ -38,15 +38,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          # kein cache, weil noch keine lockfiles existieren
 
-      - name: Install Node dependencies and Playwright
+      - name: Init Node project and install Playwright
         run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
+          # Wenn kein package.json existiert, ein Minimalprojekt anlegen
+          if [ ! -f package.json ]; then
+            echo "Kein package.json gefunden – initialisiere Node-Projekt..."
+            npm init -y
           fi
+
+          # Playwright Test als Dev-Dependency installieren
+          npm install -D @playwright/test
+          # Browser + Abhängigkeiten installieren
           npx playwright install --with-deps
 
       # Python für das Azure-OpenAI-UI-Test-Generator-Skript
