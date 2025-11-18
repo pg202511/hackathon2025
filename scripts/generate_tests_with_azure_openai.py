@@ -141,8 +141,7 @@ def call_azure_openai(prompt: str) -> str:
                 "content": prompt,
             },
         ],
-        "temperature": 0.2,
-        "max_tokens": 1200,
+        "max_completion_tokens": 1200,
     }
 
     resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=60)
