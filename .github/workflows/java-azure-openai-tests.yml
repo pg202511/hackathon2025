@@ -1,0 +1,103 @@
+name: Java CI mit Azure OpenAI Testgenerierung
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write        # wichtig für git commit/push
+  pull-requests: write   # für PR-Kontext
+
+jobs:
+  generate-and-test:
+    runs-on: ubuntu-latest
+
+    env:
+      SOURCE_DIR: src/main/java
+      TEST_DIR: src/test/java
+
+      AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+      AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+      AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # wichtig für git diff origin/main...HEAD
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
+
+      # 1) AI-generierte Tests erzeugen
+      - name: Generate/Update Unit Tests with Azure OpenAI
+        run: |
+          python scripts/generate_tests_with_azure_openai.py \
+            --source-dir "$SOURCE_DIR" \
+            --test-dir "$TEST_DIR"
+
+      - name: Show generated test changes
+        run: |
+          echo "Änderungen an Testdateien:"
+          git status
+          git diff --stat || true
+
+      # 2) Build & Tests ausführen
+      - name: Build & Run Tests (mvn verify)
+        run: mvn -B -ntp clean verify
+
+      - name: Upload JUnit & JaCoCo reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            **/target/surefire-reports/*.xml
+            **/target/site/jacoco/
+
+      # 3) Änderungen an Tests committen & zurück in den PR-Branch pushen
+      - name: Commit & push generated tests
+        if: >
+          success() &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Nur Testdateien hinzufügen
+          CHANGES=$(git status --porcelain "${TEST_DIR}" || true)
+          if [ -z "$CHANGES" ]; then
+            echo "Keine neuen oder geänderten Testdateien. Kein Commit nötig."
+            exit 0
+          fi
+
+          echo "Committe folgende Änderungen:"
+          echo "$CHANGES"
+
+          git add "${TEST_DIR}"
+          git commit -m "chore: add AI-generated unit tests via Azure OpenAI" || {
+            echo "Nichts zu committen (evtl. identischer Inhalt)."
+            exit 0
+          }
+
+          # In den Head-Branch des PR pushen
+          git push origin HEAD:"${GITHUB_HEAD_REF}"
