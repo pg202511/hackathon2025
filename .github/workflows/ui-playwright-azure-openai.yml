@@ -118,17 +118,14 @@ jobs:
           name: playwright-report
           path: playwright-report/
 
-      # Änderungen am Test committen & pushen
+      # Änderungen am Test committen & pushen (nur in PR-Branches)
       - name: Commit & push generated UI tests
         if: >
           success() &&
-          (
-            github.event_name == 'push' ||
-            (github.event_name == 'pull_request' &&
-             github.event.pull_request.head.repo.full_name == github.repository)
-          )
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
         env:
-          TARGET_BRANCH: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+          TARGET_BRANCH: ${{ github.head_ref }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -148,5 +145,5 @@ jobs:
             exit 0
           }
 
-          echo "Pushe auf Branch: ${TARGET_BRANCH}"
+          echo "Pushe auf PR-Branch: ${TARGET_BRANCH}"
           git push origin HEAD:"${TARGET_BRANCH}"
