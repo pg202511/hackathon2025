@@ -2,17 +2,17 @@
 """
 generate_ui_tests_with_azure_openai.py
 
-Für das Projekt "hackathon2025":
+Erzeugt ein Playwright-Testfile für ALLE relevanten Controller + HTML-Templates.
 
-- Liest WebController.java und HelloRestController.java
-- Liest index.html
-- Ruft Azure OpenAI auf, um einen Playwright-UI-Test zu generieren
-- Schreibt: tests/ui-hackathon2025.spec.ts
+- Sammelt alle *Controller.java unter src/main/java
+- Sammelt alle .html-Templates unter src/main/resources/templates
+- Ruft Azure OpenAI auf, um ein TypeScript-Testfile zu generieren:
+    tests/ui-hackathon2025.spec.ts
 
 Erwartet Umgebungsvariablen:
-- AZURE_OPENAI_ENDPOINT       z.B. https://<resource>.openai.azure.com
+- AZURE_OPENAI_ENDPOINT
 - AZURE_OPENAI_API_KEY
-- AZURE_OPENAI_DEPLOYMENT     Name des Deployments, z.B. gpt-4o oder o3-mini
+- AZURE_OPENAI_DEPLOYMENT
 """
 
 import os
@@ -57,7 +57,7 @@ def call_azure_openai_for_playwright(prompt: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ]
-        # kein temperature, kein max_tokens → kompatibel z.B. mit o3 / neueren Modellen
+        # kein max_tokens / keine temperature → kompatibel mit neueren Azure-Modellen
     }
 
     resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=90)
@@ -77,19 +77,91 @@ def strip_code_fences(text: str) -> str:
     return text.strip()
 
 
-def build_prompt(web_controller: str, hello_controller: str, index_html: str) -> str:
-    # Wir beschreiben EXPLIZIT das gewünschte Testmuster
+def collect_controllers(controllers_dir: pathlib.Path):
+    """
+    Sammelt alle *Controller.java-Dateien unterhalb des angegebenen Verzeichnisses.
+    Rückgabe: Liste von Dicts mit {name, path, code}.
+    """
+    result = []
+    for path in controllers_dir.rglob("*Controller.java"):
+        code = read_file(path)
+        result.append(
+            {
+                "name": path.name,
+                "path": str(path),
+                "code": code,
+            }
+        )
+    return result
+
+
+def collect_templates(templates_dir: pathlib.Path):
+    """
+    Sammelt alle .html-Templates unterhalb des angegebenen Verzeichnisses.
+    Rückgabe: Liste von Dicts mit {name, path, code}.
+    """
+    result = []
+    for path in templates_dir.rglob("*.html"):
+        code = read_file(path)
+        result.append(
+            {
+                "name": path.name,
+                "path": str(path),
+                "code": code,
+            }
+        )
+    return result
+
+
+def build_prompt(controllers, templates) -> str:
+    """
+    Baut einen Prompt, der:
+    - den bestehenden Index-Flow stabil hält
+    - zusätzliche Tests für alle weiteren Controller/HTML-Seiten verlangt
+    """
+
+    # Für die Beschreibung der Index-Seite (falls vorhanden)
+    index_html_snippet = ""
+    for t in templates:
+        if t["name"].lower().startswith("index."):
+            index_html_snippet = t["code"]
+            break
+
+    controllers_str = ""
+    for c in controllers:
+        controllers_str += f"\nController {c['name']} (Pfad: {c['path']}):\n```java\n{c['code']}\n```\n"
+
+    templates_str = ""
+    for t in templates:
+        templates_str += f"\nTemplate {t['name']} (Pfad: {t['path']}):\n```html\n{t['code']}\n```\n"
+
     return textwrap.dedent(f"""
     We are working on a Spring Boot demo app called "hackathon2025".
     It runs on http://localhost:8080.
 
-    The main HTML (index.html) currently looks like this:
+    The code base contains multiple Spring MVC controllers and multiple HTML (Thymeleaf) templates.
+    Your job is to generate ONE Playwright test file in TypeScript that covers:
+
+    - The main index page (GET /)
+    - All other relevant routes and views that can be inferred from:
+      - the controller mappings (@GetMapping, @RequestMapping, etc.)
+      - the returned view names
+      - the HTML templates under src/main/resources/templates
+
+    The goal is:
+    - to have at least one Playwright test for EVERY controller/view combination that renders a page,
+    - verifying basic rendering (title, main heading, key buttons/links),
+    - and invoking REST interactions when obvious (e.g. buttons that trigger fetch() calls).
+
+    === CURRENT INDEX PAGE BEHAVIOR (must be preserved) ===
+
+    The index.html currently looks like this (or very similar):
 
     ```html
-    {index_html}
+    {index_html_snippet}
     ```
 
-    The intended UI behavior is:
+    The intended UI behavior for the index page is:
 
     - GET / returns the main page.
     - <title> should contain the word "Hackathon".
@@ -103,88 +175,102 @@ def build_prompt(web_controller: str, hello_controller: str, index_html: str) ->
         - document.getElementById('apiResult').innerText is set to JSON.stringify(json).
         - After the click, #apiResult contains a non-empty JSON string that should contain the word "Hello".
 
-    You must generate a SINGLE Playwright test file in TypeScript named `ui-hackathon2025.spec.ts`.
-    The file must:
+    You must include a test with the EXACT name:
+      "hackathon2025 UI: initial render and REST interaction"
+    that implements exactly this flow for GET /.
 
-    - Import Playwright test functions:
-        import {{ test, expect }} from '@playwright/test';
-    - Contain exactly ONE test named:
-        "hackathon2025 UI: initial render and REST interaction"
-      (do not change this test name unless the user interface changes in a way that makes this name misleading).
-
-    The test implementation MUST follow this structure:
-
-    1. Navigate to `http://localhost:8080/`.
-    2. Assert that the page title contains "Hackathon".
-    3. Get the main heading (h1) using getByRole('heading', {{ level: 1 }}) and assert that it contains "Hackathon 2025 Demo".
-    4. Get the "Test REST" button using getByRole('button', {{ name: 'Test REST' }}) and assert that it is visible.
-    5. Get the locator for '#apiResult':
-         const apiResult = page.locator('#apiResult');
-       - Assert that count() is > 0 (the element exists):
-           const count = await apiResult.count();
-           expect(count).toBeGreaterThan(0);
-       - Assert that its text content is initially the empty string:
-           await expect(apiResult).toHaveText('');
-    6. Click the "Test REST" button.
-    7. Wait until #apiResult has a non-empty text:
-         await expect(apiResult).not.toHaveText('', {{ timeout: 5000 }});
-    8. Read the innerText of #apiResult, parse it as JSON, and assert:
-       - parsing does not return null,
-       - the parsed value is an object,
-       - Object.keys(parsed).length > 0,
-       - the raw text (toLowerCase()) contains "hello".
-
-    You can adapt SELECTORS or EXPECTED TEXTS ONLY if the provided HTML template or controllers clearly require it
-    (for example, the heading text or button label has changed).
-    Otherwise, keep the overall structure, test name, and expectations exactly as described.
-
-    Use exactly this pattern in TypeScript:
+    Example structure for that first test (adapt it only if the HTML/behavior really changed):
 
     ```ts
     import {{ test, expect }} from '@playwright/test';
 
     test('hackathon2025 UI: initial render and REST interaction', async ({{ page }}) => {{
-      // implement the steps described above here
+      await page.goto('http://localhost:8080/');
+      expect(await page.title()).toContain('Hackathon');
+      const heading = page.getByRole('heading', {{ level: 1 }});
+      await expect(heading).toContainText('Hackathon 2025 Demo');
+      const button = page.getByRole('button', {{ name: 'Test REST' }});
+      await expect(button).toBeVisible();
+      const apiResult = page.locator('#apiResult');
+      const count = await apiResult.count();
+      expect(count).toBeGreaterThan(0);
+      await expect(apiResult).toHaveText('');
+      await button.click();
+      await expect(apiResult).not.toHaveText('', {{ timeout: 5000 }});
+      const raw = await apiResult.innerText();
+      const parsed: any = JSON.parse(raw);
+      expect(parsed).not.toBeNull();
+      expect(typeof parsed).toBe('object');
+      expect(Object.keys(parsed).length).toBeGreaterThan(0);
+      expect(raw.toLowerCase()).toContain('hello');
     }});
     ```
 
-    Do NOT output any explanation or comments, only the TypeScript test code.
+    === ADDITIONAL CONTROLLERS AND HTML TEMPLATES ===
 
-    For additional context only (do not overfit on these, just use them if helpful),
-    here are the controllers:
+    Here are all controllers:
 
-    WebController:
-    ```java
-    {web_controller}
-    ```
+    {controllers_str}
 
-    HelloRestController:
-    ```java
-    {hello_controller}
-    ```
+    Here are all HTML templates:
+
+    {templates_str}
+
+    Your tasks for ADDITIONAL tests:
+
+    1. Inspect all controllers (*Controller.java) and identify GET routes and view names
+       (e.g. @GetMapping("/goodbye") returning "goodbye").
+
+    2. Inspect the HTML templates and match them to controllers/views by name
+       (e.g. a controller returns "goodbye" -> template goodbye.html or goodby.html).
+
+    3. For each such page/view:
+       - Add a dedicated Playwright test in the SAME file (ui-hackathon2025.spec.ts).
+       - Name the test descriptively, e.g.:
+           "hackathon2025 UI: render goodbye page"
+           "hackathon2025 UI: render xyz page"
+       - In each test:
+           - Navigate to the appropriate URL (e.g. http://localhost:8080/goodbye).
+           - Assert that the page loads without error.
+           - Assert that the page title and main heading (h1) contain meaningful expected text.
+           - Assert that key buttons/links or text snippets from the template are visible.
+           - If the page triggers REST calls (e.g. via fetch), simulate a click and assert
+             that the response is rendered on the page (similar to the index test).
+
+    General rules for the generated TypeScript file:
+
+    - The file name must be: ui-hackathon2025.spec.ts
+    - Use:
+        import {{ test, expect }} from '@playwright/test';
+    - Use Playwright's recommended selectors:
+        page.getByRole(...), page.getByText(...), page.locator(...)
+    - Use `await page.goto('http://localhost:8080/...')` with the correct paths from the controllers.
+    - DO NOT start/stop the backend in the tests; assume it is already running.
+    - Keep the first index test name EXACTLY:
+        'hackathon2025 UI: initial render and REST interaction'
+      and only change selectors/expectations if the provided HTML/controllers clearly require it.
+    - For additional tests, choose clear, unique names.
+
+    Output ONLY the TypeScript code for the test file (no explanations, no comments).
     """)
 
 
-
 def main():
-    # Skript liegt in scripts/, Repo-Root ist eine Ebene höher
+    # Wir nehmen an: dieses Skript liegt in scripts/, Repo-Root ist eine Ebene höher
     repo_root = pathlib.Path(__file__).resolve().parents[1]
 
     controllers_dir = repo_root / "src/main/java/com/example/hackathon2025"
     templates_dir = repo_root / "src/main/resources/templates"
 
-    web_controller_path = controllers_dir / "WebController.java"
-    hello_controller_path = controllers_dir / "HelloRestController.java"
-    index_html_path = templates_dir / "index.html"
+    controllers = collect_controllers(controllers_dir)
+    templates = collect_templates(templates_dir)
 
-    web_controller = read_file(web_controller_path)
-    hello_controller = read_file(hello_controller_path)
-    index_html = read_file(index_html_path)
+    if not controllers:
+        print(f"[WARN] Keine Controller unter {controllers_dir} gefunden.")
+    if not templates:
+        print(f"[WARN] Keine HTML-Templates unter {templates_dir} gefunden.")
 
-    if not index_html.strip():
-        print(f"[WARN] index.html leer oder nicht gefunden: {index_html_path}")
-
-    prompt = build_prompt(web_controller, hello_controller, index_html)
+    prompt = build_prompt(controllers, templates)
 
     print("[INFO] Rufe Azure OpenAI zur Generierung von Playwright-Tests auf...")
     completion = call_azure_openai_for_playwright(prompt)
