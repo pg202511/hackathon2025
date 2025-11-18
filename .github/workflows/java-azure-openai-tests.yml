@@ -7,24 +7,22 @@ on:
     branches: [ main ]
 
 permissions:
-  contents: write        # notwendig für git commit/push
-  pull-requests: write   # optional, falls du PR-Beschreibungen o.ä. updaten willst
+  contents: write
+  pull-requests: write
 
 jobs:
   generate-and-test:
     runs-on: ubuntu-latest
 
     env:
-      # Projektstruktur
       SOURCE_DIR: src/main/java
       TEST_DIR: src/test/java
 
-      # Azure OpenAI Konfiguration (aus GitHub Secrets)
       AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
       AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
       AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
 
-      # Git-Basis/Head für Diff (PR oder Push)
+      # für Diff:
       GIT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
       GIT_HEAD_SHA: ${{ github.sha }}
 
@@ -32,7 +30,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # wichtig für git diff
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -51,7 +49,7 @@ jobs:
           java-version: '17'
           cache: 'maven'
 
-      # 1) AI-generierte Tests erzeugen/aktualisieren
+      # 1) Tests generieren
       - name: Generate/Update Unit Tests with Azure OpenAI
         run: |
           python scripts/generate_tests_with_azure_openai.py \
@@ -64,7 +62,7 @@ jobs:
           git status
           git diff --stat || true
 
-      # 2) Build & Tests ausführen (inkl. AI-Tests)
+      # 2) Build & Tests
       - name: Build & Run Tests (mvn verify)
         run: |
           mvn -B -ntp clean verify
@@ -78,14 +76,18 @@ jobs:
             **/target/surefire-reports/*.xml
             **/target/site/jacoco/
 
-      # 3) Änderungen an Tests committen & zurück in den PR-Branch pushen
+      # 3) Änderungen an Tests committen & zurück pushen
       - name: Commit & push generated tests
+        # Nur bei Erfolg + nur, wenn es kein Fork ist
         if: >
           success() &&
-          github.event_name == 'pull_request' &&
-          github.event.pull_request.head.repo.full_name == github.repository
+          (
+            github.event_name == 'push' ||
+            (github.event_name == 'pull_request' &&
+             github.event.pull_request.head.repo.full_name == github.repository)
+          )
         env:
-          GITHUB_HEAD_REF: ${{ github.head_ref }}
+          TARGET_BRANCH: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -105,4 +107,5 @@ jobs:
             exit 0
           }
 
-          git push origin HEAD:"${GITHUB_HEAD_REF}"
+          echo "Pushe auf Branch: ${TARGET_BRANCH}"
+          git push origin HEAD:"${TARGET_BRANCH}"
