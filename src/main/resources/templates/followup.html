@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Followup Demo</title>
+</head>
+<body>
+<h1>Followup REST API Demo</h1>
+
+<h2>HelloRestController Endpunkte</h2>
+<button onclick="callHello()">/api/hello</button>
+<button onclick="callHello2()">/api/hello2</button>
+<button onclick="callHello3()">/api/hello3</button>
+<p id="helloResult"></p>
+
+<h2>GoodbyRestController Endpunkte</h2>
+<input type="text" id="goodbyInput" placeholder="Dein Name oder Text">
+<button onclick="callGoodby()">/api/goodby (mit Input)</button>
+<button onclick="callGoodnight()">/api/goodnight</button>
+<p id="goodbyResult"></p>
+
+<script>
+async function callHello() {
+    const res = await fetch('/api/hello');
+    const j = await res.json();
+    document.getElementById('helloResult').innerText = JSON.stringify(j);
+}
+async function callHello2() {
+    const res = await fetch('/api/hello2');
+    const j = await res.json();
+    document.getElementById('helloResult').innerText = JSON.stringify(j);
+}
+async function callHello3() {
+    const res = await fetch('/api/hello3');
+    const j = await res.json();
+    document.getElementById('helloResult').innerText = JSON.stringify(j);
+}
+async function callGoodby() {
+    const input = document.getElementById('goodbyInput').value;
+    const res = await fetch('/api/goodby?name=' + encodeURIComponent(input));
+    const j = await res.json();
+    document.getElementById('goodbyResult').innerText = JSON.stringify(j);
+}
+async function callGoodnight() {
+    const res = await fetch('/api/goodnight');
+    const j = await res.json();
+    document.getElementById('goodbyResult').innerText = JSON.stringify(j);
+}
+</script>
+</body>
+</html>
+
