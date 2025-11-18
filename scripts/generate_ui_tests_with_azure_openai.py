@@ -120,7 +120,9 @@ def build_prompt(web_controller: str, hello_controller: str, index_html: str) ->
     4. Get the "Test REST" button using getByRole('button', {{ name: 'Test REST' }}) and assert that it is visible.
     5. Get the locator for '#apiResult':
          const apiResult = page.locator('#apiResult');
-       - Assert that count() is > 0 (the element exists).
+       - Assert that count() is > 0 (the element exists):
+           const count = await apiResult.count();
+           expect(count).toBeGreaterThan(0);
        - Assert that its text content is initially the empty string:
            await expect(apiResult).toHaveText('');
     6. Click the "Test REST" button.
@@ -141,8 +143,8 @@ def build_prompt(web_controller: str, hello_controller: str, index_html: str) ->
     ```ts
     import {{ test, expect }} from '@playwright/test';
 
-    test('hackathon2025 UI: initial render and REST interaction', async ({ page }) => {{
-      // your steps here, matching the behavior described above
+    test('hackathon2025 UI: initial render and REST interaction', async ({{ page }}) => {{
+      // implement the steps described above here
     }});
     ```
 
