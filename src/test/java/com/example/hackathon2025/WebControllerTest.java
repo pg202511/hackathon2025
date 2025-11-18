@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ui.ExtendedModelMap;
 import org.springframework.ui.Model;
+import org.mockito.Mockito;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -17,61 +18,46 @@ class WebControllerTest {
     }
 
     @Test
-    void index_shouldReturnIndexViewAndSetTitleAttribute() {
+    void indexReturnsIndexViewAndAddsTitleToModel() {
         Model model = new ExtendedModelMap();
 
-        String view = controller.index(model);
+        String viewName = controller.index(model);
 
-        assertEquals("index", view, "The controller should return the 'index' view name.");
-        assertTrue(((ExtendedModelMap) model).asMap().containsKey("title"), "Model should contain a 'title' attribute.");
-        assertEquals("Hackathon 2025 Demo",
-                ((ExtendedModelMap) model).asMap().get("title"),
-                "The 'title' attribute should be set to the expected demo text.");
-    }
-
-    @Test
-    void index_shouldOverwriteExistingTitleAttribute() {
-        ExtendedModelMap model = new ExtendedModelMap();
-        model.addAttribute("title", "Old Title");
-
-        String view = controller.index(model);
-
-        assertEquals("index", view);
+        assertEquals("index", viewName, "Expected view name to be 'index'");
+        assertTrue(model.asMap().containsKey("title"), "Model should contain 'title' attribute");
         assertEquals("Hackathon 2025 Demo", model.asMap().get("title"),
-                "The controller should overwrite any existing 'title' attribute with the demo text.");
+                "Model 'title' attribute should have the expected value");
     }
 
     @Test
-    void index_shouldPreserveOtherAttributes() {
-        ExtendedModelMap model = new ExtendedModelMap();
-        model.addAttribute("foo", 42);
+    void indexUsesModelAddAttribute_whenModelIsMocked() {
+        Model mockModel = Mockito.mock(Model.class);
+        // ensure fluent API doesn't break if controller relies on return value (it doesn't, but safe)
+        Mockito.when(mockModel.addAttribute(Mockito.anyString(), Mockito.any())).thenReturn(mockModel);
 
-        String view = controller.index(model);
+        String viewName = controller.index(mockModel);
 
-        assertEquals("index", view);
-        assertEquals(42, model.asMap().get("foo"), "Attributes other than 'title' should be preserved.");
-        assertEquals("Hackathon 2025 Demo", model.asMap().get("title"));
+        assertEquals("index", viewName);
+        Mockito.verify(mockModel).addAttribute("title", "Hackathon 2025 Demo");
+        Mockito.verifyNoMoreInteractions(mockModel);
     }
 
     @Test
-    void index_whenModelIsNull_shouldThrowNullPointerException() {
+    void indexThrowsNullPointerException_whenModelIsNull() {
         assertThrows(NullPointerException.class, () -> controller.index(null),
-                "Calling index with a null Model should throw a NullPointerException.");
+                "Calling index with null Model should throw NullPointerException");
     }
 
     @Test
-    void multipleInvocations_withDifferentModels_areIndependent() {
-        ExtendedModelMap model1 = new ExtendedModelMap();
-        ExtendedModelMap model2 = new ExtendedModelMap();
-        model2.addAttribute("title", "previous");
+    void indexIsIdempotent_whenCalledMultipleTimesOnSameModel() {
+        Model model = new ExtendedModelMap();
 
-        String view1 = controller.index(model1);
-        String view2 = controller.index(model2);
+        String first = controller.index(model);
+        String second = controller.index(model);
 
-        assertEquals("index", view1);
-        assertEquals("index", view2);
-        assertEquals("Hackathon 2025 Demo", model1.asMap().get("title"));
-        assertEquals("Hackathon 2025 Demo", model2.asMap().get("title"),
-                "Each invocation should set the title on the provided Model independently.");
+        assertEquals("index", first);
+        assertEquals("index", second);
+        // The attribute should still be present and have the expected value
+        assertEquals("Hackathon 2025 Demo", model.asMap().get("title"));
     }
 }

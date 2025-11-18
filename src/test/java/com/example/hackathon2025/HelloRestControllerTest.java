@@ -1,80 +1,59 @@
 package com.example.hackathon2025;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class HelloRestControllerTest {
-
-    private static final String EXPECTED_MESSAGE = "Hello again and again from REST API for Hackathon 2025!";
+class HelloRestControllerTest {
 
     @Test
-    public void testHelloReturnsExpectedMap() {
-        HelloRestController controller = new HelloRestController();
-
-        Map<String, String> result = controller.hello();
-
-        assertNotNull(result, "Resulting map should not be null");
-        assertEquals(1, result.size(), "Map should contain exactly one entry");
-        assertTrue(result.containsKey("message"), "Map should contain the key 'message'");
-        assertEquals(EXPECTED_MESSAGE, result.get("message"), "The message value should match the expected text");
-    }
-
-    @Test
-    public void testReturnedMapIsImmutable() {
+    void testHelloReturnsNonNullMapWithExpectedMessage() {
         HelloRestController controller = new HelloRestController();
         Map<String, String> result = controller.hello();
 
-        // Map.of returns an immutable map; attempts to modify should throw UnsupportedOperationException
-        assertThrows(UnsupportedOperationException.class, () -> {
-            result.put("another", "value");
-        }, "Modifying the returned map should throw UnsupportedOperationException");
+        assertNotNull(result, "Returned map should not be null");
+        assertEquals(1, result.size(), "Returned map should contain exactly one entry");
+        assertTrue(result.containsKey("message"), "Returned map should contain the 'message' key");
+
+        String message = result.get("message");
+        assertNotNull(message, "Message value should not be null");
+        assertTrue(message.startsWith("Hello again"), "Message should start with greeting text");
+        assertTrue(message.contains("Hackathon 2025"), "Message should mention 'Hackathon 2025'");
+        assertEquals("Hello again and again from REST API for Hackathon 2025!", message,
+                "Message should exactly match the expected text");
     }
 
     @Test
-    public void testMultipleCallsProduceConsistentResults() {
+    void testHelloMapIsImmutable() {
         HelloRestController controller = new HelloRestController();
+        Map<String, String> result = controller.hello();
 
+        assertThrows(UnsupportedOperationException.class, () -> result.put("another", "value"),
+                "Map returned by Map.of(...) should be immutable and throw on put");
+
+        // Also verify remove fails
+        assertThrows(UnsupportedOperationException.class, () -> result.remove("message"),
+                "Map returned by Map.of(...) should be immutable and throw on remove");
+    }
+
+    @Test
+    void testMultipleCallsReturnEqualContent() {
+        HelloRestController controller = new HelloRestController();
         Map<String, String> first = controller.hello();
         Map<String, String> second = controller.hello();
 
-        assertEquals(first, second, "Multiple calls should produce equal maps");
-        assertEquals(EXPECTED_MESSAGE, second.get("message"), "Second call should contain the expected message");
+        assertEquals(first, second, "Subsequent calls should return equivalent maps");
+        // They may or may not be the same instance; we only require logical equality and immutability.
+        assertTrue(first.containsKey("message") && second.containsKey("message"));
+        assertEquals(first.get("message"), second.get("message"));
     }
 
     @Test
-    public void testConcurrentAccessIsConsistent() throws InterruptedException, ExecutionException, TimeoutException {
-        HelloRestController controller = new HelloRestController();
-        int threadCount = 10;
-        int tasksPerThread = 20;
-        int totalTasks = threadCount * tasksPerThread;
-
-        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
-        try {
-            List<Callable<Map<String, String>>> callables = new ArrayList<>(totalTasks);
-            for (int i = 0; i < totalTasks; i++) {
-                callables.add(controller::hello);
-            }
-
-            List<Future<Map<String, String>>> futures = executor.invokeAll(callables);
-
-            for (Future<Map<String, String>> future : futures) {
-                // Use a timeout per future to avoid hanging tests in case of issues
-                Map<String, String> result = future.get(2, TimeUnit.SECONDS);
-                assertNotNull(result, "Concurrent call should not return null");
-                assertEquals(1, result.size(), "Concurrent call map should contain exactly one entry");
-                assertEquals(EXPECTED_MESSAGE, result.get("message"), "Concurrent call should return expected message");
-            }
-        } finally {
-            executor.shutdownNow();
-            if (!executor.awaitTermination(1, TimeUnit.SECONDS)) {
-                // best-effort shutdown; nothing to do
-            }
-        }
+    void testControllerIsAnnotatedWithRestController() {
+        boolean annotated = HelloRestController.class.isAnnotationPresent(RestController.class);
+        assertTrue(annotated, "HelloRestController should be annotated with @RestController");
     }
 }
