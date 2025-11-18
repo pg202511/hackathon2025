@@ -31,6 +31,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # WICHTIG: bei PRs den PR-Branch auschecken, sonst main
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -76,18 +78,15 @@ jobs:
             **/target/surefire-reports/*.xml
             **/target/site/jacoco/
 
-      # 3) Änderungen an Tests committen & zurück pushen
+      # 3) Änderungen an Tests committen & zurück pushen (nur im PR-Branch)
       - name: Commit & push generated tests
-        # Nur bei Erfolg + nur, wenn es kein Fork ist
         if: >
           success() &&
-          (
-            github.event_name == 'push' ||
-            (github.event_name == 'pull_request' &&
-             github.event.pull_request.head.repo.full_name == github.repository)
-          )
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
         env:
-          TARGET_BRANCH: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+          TARGET_BRANCH: ${{ github.head_ref }}
+          TEST_DIR: ${{ env.TEST_DIR }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -107,5 +106,5 @@ jobs:
             exit 0
           }
 
-          echo "Pushe auf Branch: ${TARGET_BRANCH}"
+          echo "Pushe auf PR-Branch: ${TARGET_BRANCH}"
           git push origin HEAD:"${TARGET_BRANCH}"
