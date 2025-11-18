@@ -21,6 +21,8 @@ jobs:
       AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
       AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
       AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+      GIT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      GIT_HEAD_SHA: ${{ github.sha }}
 
     steps:
       - name: Checkout
@@ -51,6 +53,7 @@ jobs:
           python scripts/generate_tests_with_azure_openai.py \
             --source-dir "$SOURCE_DIR" \
             --test-dir "$TEST_DIR"
+            - name: Generate/Update Unit Tests with Azure OpenAI
 
       - name: Show generated test changes
         run: |
