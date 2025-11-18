@@ -1,57 +1,108 @@
 package com.example.hackathon2025;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.ui.ExtendedModelMap;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ui.Model;
 
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.Optional;
+
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-public class WebControllerTest {
+@ExtendWith(MockitoExtension.class)
+class WebControllerTest {
 
-    @Test
-    void indexReturnsViewNameAndSetsTitleInModel_usingConcreteModel() {
-        WebController controller = new WebController();
-        ExtendedModelMap model = new ExtendedModelMap();
+    private WebController controller;
 
-        String view = controller.index(model);
+    @Mock
+    private Model model;
 
-        assertEquals("index", view, "Expected view name to be 'index'");
-        assertTrue(model.containsAttribute("title"), "Model should contain 'title' attribute");
-        assertEquals("Hackathon 2025 Demo", model.get("title"), "Title attribute should be set to demo text");
+    @BeforeEach
+    void setUp() {
+        controller = new WebController();
     }
 
     @Test
-    void indexOverwritesExistingTitleInModel() {
-        WebController controller = new WebController();
-        ExtendedModelMap model = new ExtendedModelMap();
-        model.addAttribute("title", "old value");
+    void index_shouldReturnIndexViewAndSetTitleAttribute() {
+        // Act
+        String viewName = controller.index(model);
 
-        String view = controller.index(model);
+        // Assert
+        assertEquals("index", viewName, "Expected view name to be 'index'");
 
-        assertEquals("index", view);
-        assertEquals("Hackathon 2025 Demo", model.get("title"), "Existing title should be overwritten");
+        // Verify model interaction
+        verify(model, times(1)).addAttribute("title", "Hackathon 2025 Demo");
+        verifyNoMoreInteractions(model);
     }
 
     @Test
-    void indexInvokesAddAttributeOnProvidedModel_mockedModel() {
-        WebController controller = new WebController();
-        Model mockModel = mock(Model.class);
-
-        // call method under test
-        String view = controller.index(mockModel);
-
-        // verify behavior on mock and return value
-        assertEquals("index", view);
-        verify(mockModel).addAttribute("title", "Hackathon 2025 Demo");
-    }
-
-    @Test
-    void indexWithNullModelThrowsNullPointerException() {
-        WebController controller = new WebController();
-
+    void index_withNullModel_shouldThrowNullPointerException() {
+        // Act & Assert
         assertThrows(NullPointerException.class, () -> controller.index(null),
-                "Passing null model should result in a NullPointerException");
+                "Calling index with a null Model should throw NullPointerException because addAttribute is invoked");
+    }
+
+    @Test
+    void classAndMethod_shouldHaveSpringAnnotations() throws Exception {
+        Class<?> clazz = WebController.class;
+
+        // Verify class has an annotation named "Controller" (to avoid hard dependency on the annotation type)
+        boolean hasControllerAnnotation = Arrays.stream(clazz.getAnnotations())
+                .map(Annotation::annotationType)
+                .map(Class::getSimpleName)
+                .anyMatch(name -> "Controller".equals(name));
+        assertTrue(hasControllerAnnotation, "WebController should be annotated with @Controller");
+
+        // Find the "index" method
+        Optional<Method> indexMethodOpt = Arrays.stream(clazz.getDeclaredMethods())
+                .filter(m -> "index".equals(m.getName()))
+                .findFirst();
+        assertTrue(indexMethodOpt.isPresent(), "Expected an 'index' method to be present");
+        Method indexMethod = indexMethodOpt.get();
+
+        // Verify method has an annotation named "GetMapping"
+        Optional<Annotation> getMappingAnnOpt = Arrays.stream(indexMethod.getAnnotations())
+                .filter(a -> "GetMapping".equals(a.annotationType().getSimpleName()))
+                .findFirst();
+        assertTrue(getMappingAnnOpt.isPresent(), "index method should be annotated with @GetMapping");
+
+        // Inspect the annotation to ensure it maps to "/"
+        Annotation getMappingAnn = getMappingAnnOpt.get();
+
+        // Try to read "value" or "path" element of the annotation reflectively
+        String[] paths = null;
+        try {
+            Method valueMethod = getMappingAnn.annotationType().getMethod("value");
+            Object val = valueMethod.invoke(getMappingAnn);
+            if (val instanceof String[]) {
+                paths = (String[]) val;
+            }
+        } catch (NoSuchMethodException ignored) {
+            // ignore and try "path"
+        }
+
+        if (paths == null) {
+            try {
+                Method pathMethod = getMappingAnn.annotationType().getMethod("path");
+                Object val = pathMethod.invoke(getMappingAnn);
+                if (val instanceof String[]) {
+                    paths = (String[]) val;
+                }
+            } catch (NoSuchMethodException ignored) {
+                // no path either
+            }
+        }
+
+        assertNotNull(paths, "Could not read paths from @GetMapping annotation (no 'value' or 'path' attribute found)");
+        // Expect at least one mapping and that one of them equals "/"
+        assertTrue(paths.length > 0, "Expected at least one mapping path in @GetMapping");
+        boolean containsRoot = Arrays.stream(paths).anyMatch(s -> "/".equals(s));
+        assertTrue(containsRoot, "Expected @GetMapping to contain mapping for '/'");
     }
 }

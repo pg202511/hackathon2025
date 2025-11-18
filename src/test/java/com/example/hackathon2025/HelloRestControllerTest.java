@@ -1,9 +1,11 @@
 package com.example.hackathon2025;
 
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.bind.annotation.GetMapping;
 
+import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -12,70 +14,74 @@ class HelloRestControllerTest {
 
     private HelloRestController controller;
 
+    private static final String EXPECTED_MESSAGE = "Hello again and again from REST API for Hackathon 2025!";
+
     @BeforeEach
     void setUp() {
         controller = new HelloRestController();
     }
 
     @Test
-    @DisplayName("hello() returns a non-null map containing the expected message")
-    void testHelloReturnsExpectedMessage() {
+    void hello_shouldReturnNonNullMapContainingMessage() {
         Map<String, String> result = controller.hello();
 
-        assertNotNull(result, "Resulting map should not be null");
-        assertFalse(result.isEmpty(), "Resulting map should not be empty");
-        assertEquals(1, result.size(), "Resulting map should contain exactly one entry");
-        assertTrue(result.containsKey("message"), "Resulting map should contain the key 'message'");
+        assertNotNull(result, "Returned map should not be null");
+        assertEquals(1, result.size(), "Returned map should contain exactly one entry");
+        assertTrue(result.containsKey("message"), "Returned map must contain the key 'message'");
 
         String message = result.get("message");
         assertNotNull(message, "Message value should not be null");
-        assertEquals("Hello again and again from REST API for Hackathon 2025!", message,
-                "Message content should match the expected greeting");
+        assertFalse(message.isEmpty(), "Message value should not be empty");
+
+        // Exact content verification (detects regressions)
+        assertEquals(EXPECTED_MESSAGE, message, "Message content should match expected text");
     }
 
     @Test
-    @DisplayName("hello() returns an immutable map (attempting modification throws UnsupportedOperationException)")
-    void testMapIsImmutable() {
+    void hello_shouldReturnImmutableMap() {
         Map<String, String> result = controller.hello();
 
-        // put should throw UnsupportedOperationException for immutable Map.of(...)
-        assertThrows(UnsupportedOperationException.class, () -> result.put("newKey", "value"),
-                "Putting into the returned map should throw UnsupportedOperationException");
+        assertNotNull(result);
 
-        // remove should also throw
-        assertThrows(UnsupportedOperationException.class, () -> result.remove("message"),
-                "Removing from the returned map should throw UnsupportedOperationException");
+        // Attempting to modify the Map should throw UnsupportedOperationException for Map.of result
+        assertThrows(UnsupportedOperationException.class, () -> result.put("newKey", "newValue"),
+                "Returned map should be immutable and reject put operations");
     }
 
     @Test
-    @DisplayName("Multiple invocations produce equivalent maps (content equality)")
-    void testMultipleInvocationsReturnEqualContent() {
+    void hello_multipleInvocationsShouldReturnSameContent() {
         Map<String, String> first = controller.hello();
         Map<String, String> second = controller.hello();
 
-        // They may or may not be the same instance, but they must be equal in content
-        assertEquals(first, second, "Two invocations should return maps with equal content");
+        assertNotNull(first);
+        assertNotNull(second);
+
+        // Content equality is important; instance equality is not required
+        assertEquals(first, second, "Multiple invocations should return equal maps (same content)");
     }
 
     @Test
-    @DisplayName("Returned map contains no null keys or values")
-    void testNoNullKeysOrValues() {
-        Map<String, String> result = controller.hello();
+    void hello_methodShouldBeAnnotatedWithGetMappingForApiHello() throws NoSuchMethodException {
+        Method method = HelloRestController.class.getMethod("hello");
+        GetMapping mapping = method.getAnnotation(GetMapping.class);
 
-        // Ensure keys and values are non-null by iterating entries
-        result.forEach((k, v) -> {
-            assertNotNull(k, "Map should not contain null keys");
-            assertNotNull(v, "Map should not contain null values");
-        });
+        assertNotNull(mapping, "hello() should be annotated with @GetMapping");
+
+        // Check both 'value' and 'path' aliases for the expected endpoint
+        String[] values = mapping.value();
+        String[] paths = mapping.path();
+
+        boolean containsExpected = Arrays.asList(values).contains("/api/hello") || Arrays.asList(paths).contains("/api/hello");
+        assertTrue(containsExpected, "@GetMapping must map to '/api/hello'");
     }
 
     @Test
-    @DisplayName("String representation of the map contains the greeting text")
-    void testToStringContainsGreeting() {
+    void hello_messageShouldMentionHackathon2025() {
         Map<String, String> result = controller.hello();
-        String repr = result.toString();
+        String message = result.get("message");
 
-        assertTrue(repr.contains("Hackathon 2025") || repr.contains("Hackathon2025"),
-                "String representation should contain reference to 'Hackathon 2025'");
+        assertNotNull(message);
+        // Less brittle check to ensure purpose of message remains intact
+        assertTrue(message.contains("Hackathon 2025"), "Message should reference 'Hackathon 2025'");
     }
 }
