@@ -72,7 +72,6 @@ def call_azure_openai(prompt: str) -> str:
                 "content": prompt,
             },
         ],
-        "temperature": 0.2,
         "max_tokens": 1200,
     }
 
