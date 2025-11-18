@@ -81,4 +81,225 @@ def get_changed_java_files(source_dir: pathlib.Path) -> List[pathlib.Path]:
         line = line.strip()
         if not line:
             continue
-        p = pathlib.P
+        p = pathlib.Path(line)
+        if p.suffix == ".java" and source_dir in p.parents:
+            changed_files.append(p)
+
+    if changed_files:
+        print("[INFO] Geänderte Java-Dateien (aus git diff):")
+        for f in changed_files:
+            print(f"  - {f}")
+        return changed_files
+
+    # Fallback: Alle Java-Dateien unter source_dir
+    print("[INFO] Keine geänderten Java-Dateien via git diff gefunden.")
+    print("[INFO] Fallback: verwende ALLE Java-Sourcen unter", source_dir)
+    all_java = list(source_dir.rglob("*.java"))
+    for f in all_java:
+        print(f"  - {f}")
+    return all_java
+
+
+def extract_package_and_class(java_source: str) -> Tuple[Optional[str], Optional[str]]:
+    """Extrahiert package-Name und Klassenname aus Java-Quelltext."""
+    package_match = re.search(r"package\s+([a-zA-Z0-9_.]+)\s*;", java_source)
+    class_match = re.search(r"(public\s+)?class\s+([A-Za-z0-9_]+)", java_source)
+    package_name = package_match.group(1) if package_match else None
+    class_name = class_match.group(2) if class_match else None
+    return package_name, class_name
+
+
+# ---------- Bootstrap-Erkennung ---------------------------------------------
+def is_bootstrap_class(java_source: str, class_name: Optional[str]) -> bool:
+    """
+    Erkenne typische Bootstrap-Klassen, für die wir KEINE Tests generieren wollen.
+
+    Heuristik:
+    - Klasse enthält @SpringBootApplication
+    - oder Klassenname endet auf 'Application'
+    """
+    if not class_name:
+        return False
+
+    if "@SpringBootApplication" in java_source:
+        return True
+
+    if class_name.endswith("Application"):
+        return True
+
+    return False
+
+
+# ---------------------------------------------------------
+# Azure OpenAI Aufruf (ohne max_tokens / temperature)
+# ---------------------------------------------------------
+def call_azure_openai(prompt: str) -> str:
+    endpoint = os.environ["AZURE_OPENAI_ENDPOINT"].rstrip("/")
+    api_key = os.environ["AZURE_OPENAI_API_KEY"]
+    deployment = os.environ["AZURE_OPENAI_DEPLOYMENT"]
+
+    url = f"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={API_VERSION}"
+
+    headers = {
+        "Content-Type": "application/json",
+        "api-key": api_key,
+    }
+
+    # Kein max_tokens, keine temperature → kompatibel mit neueren Azure-Modellen
+    body = {
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are a senior Java developer and test engineer. "
+                    "Generate high-quality, compilable JUnit 5 test classes. "
+                    "Focus on meaningful edge cases, null handling, and business rules. "
+                    "Do NOT change production code; only produce test code. "
+                    "Use JUnit 5 (org.junit.jupiter.api.*) and, if appropriate, Mockito. "
+                    "Prefer plain unit tests without starting heavy frameworks when possible. "
+                    "For Spring MVC controllers, DO NOT load a Spring context; "
+                    "instantiate the controller directly and use simple Model implementations "
+                    "like org.springframework.ui.ExtendedModelMap."
+                ),
+            },
+            {
+                "role": "user",
+                "content": prompt,
+            },
+        ]
+    }
+
+    resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=60)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Azure OpenAI Fehler {resp.status_code}: {resp.text}")
+    data = resp.json()
+    content = data["choices"][0]["message"]["content"]
+    return content
+
+
+def strip_code_fences(text: str) -> str:
+    """
+    Entfernt ```java ...``` oder ``` ...``` Codeblöcke, falls vorhanden,
+    und gibt nur den reinen Java-Code zurück.
+    """
+    match = re.search(r"```(?:java)?\s*(.*?)```", text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return text.strip()
+
+
+# ---------------------------------------------------------
+# Generierung der Testdateien
+# ---------------------------------------------------------
+def generate_test_for_file(source_file: pathlib.Path,
+                           source_dir: pathlib.Path,
+                           test_dir: pathlib.Path) -> None:
+    java_source = source_file.read_text(encoding="utf-8")
+    package_name, class_name = extract_package_and_class(java_source)
+    if not class_name:
+        print(f"[WARN] Keine Klasse in {source_file} erkannt, überspringe.")
+        return
+
+    # Bootstrap-Klassen (z. B. Hackathon2025Application) überspringen
+    if is_bootstrap_class(java_source, class_name):
+        print(f"[INFO] Bootstrap-Klasse erkannt ({class_name}), keine Tests generiert.")
+        return
+
+    # Pfad relativ zum source_dir abbilden
+    rel = source_file.relative_to(source_dir)
+    test_rel = rel.with_name(f"{class_name}Test.java")
+    target_path = test_dir / test_rel
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+
+    prompt = textwrap.dedent(f"""
+    Hier ist eine Java-Klasse aus einem produktiven Service.
+    Erzeuge eine passende JUnit-5-Testklasse. Anforderungen:
+
+    Allgemein:
+    - Nutze JUnit 5 (`org.junit.jupiter.api.*`).
+    - Erzeuge sinnvolle Testmethoden: Normalfall, Edge Cases, Fehlerfälle.
+    - Verwende, wenn sinnvoll, Mockito (`org.mockito.*`) zum Mocking.
+    - Stelle sicher, dass der Code kompilierbar ist.
+    - Teste explizit die öffentlich sichtbaren Methoden.
+    - Erzeuge vorzugsweise Plain-Unit-Tests, die ohne Spring-Kontext auskommen.
+    - Verwende KEINE Annotationen wie `@SpringBootTest`, `@WebMvcTest`, `@ExtendWith(SpringExtension.class)`
+      ohne Notwendigkeit.
+
+    Speziell für Spring MVC Controller:
+    - Wenn eine Methode ein Argument vom Typ `org.springframework.ui.Model` hat,
+      verwende im Test eine Implementierung wie:
+          `Model model = new org.springframework.ui.ExtendedModelMap();`
+      und rufe die Methode direkt auf, z.B.:
+          `String viewName = controller.index(model);`
+    - Verwende NICHT `ModelMap`, wenn die Methode `Model` erwartet (vermeide Typkonflikte).
+    - Nur wenn die Signatur explizit `ModelMap` verwendet, darfst du `ModelMap` verwenden.
+    - Starte keinen Spring ApplicationContext im Test, wenn es vermeidbar ist.
+
+    Package / Struktur:
+    - Nutze die gleiche package-Deklaration wie die Quellklasse.
+    - Lege die Testklasse im entsprechenden Testpaket an (gleicher Pfad unter src/test/java).
+
+    Quell-Datei (Pfad): {source_file}
+    Quell-Code:
+    ---
+    {java_source}
+    ---
+    Gib NUR den Java-Code der Testklasse zurück.
+    """)
+
+    print(f"[INFO] Rufe Azure OpenAI für Tests zu {source_file} auf...")
+    completion = call_azure_openai(prompt)
+    test_code = strip_code_fences(completion)
+
+    # Sicherstellen, dass package-Deklaration vorhanden ist
+    if package_name and f"package {package_name}" not in test_code:
+        test_code = f"package {package_name};\n\n{test_code}"
+
+    target_path.write_text(test_code, encoding="utf-8")
+    print(f"[OK] Test geschrieben: {target_path}")
+
+
+# ---------------------------------------------------------
+# main
+# ---------------------------------------------------------
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Erzeugt/aktualisiert JUnit-Tests mittels Azure OpenAI für geänderte Java-Dateien."
+    )
+    parser.add_argument(
+        "--source-dir",
+        required=True,
+        help="Pfad zu src/main/java",
+    )
+    parser.add_argument(
+        "--test-dir",
+        required=True,
+        help="Pfad zu src/test/java",
+    )
+    args = parser.parse_args()
+
+    source_dir = pathlib.Path(args.source_dir).resolve()
+    test_dir = pathlib.Path(args.test_dir).resolve()
+
+    if not source_dir.exists():
+        raise SystemExit(f"Source-Verzeichnis existiert nicht: {source_dir}")
+
+    changed_files = get_changed_java_files(source_dir)
+
+    if not changed_files:
+        print("[INFO] Keine Java-Dateien gefunden – nichts zu tun.")
+        return
+
+    print("[INFO] Java-Dateien, für die Tests erzeugt werden:")
+    for f in changed_files:
+        print(f"  - {f}")
+
+    for f in changed_files:
+        try:
+            generate_test_for_file(f, source_dir, test_dir)
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Generieren von Tests für {f}: {e}")
+
+
+if __name__ == "__main__":
+    main()
