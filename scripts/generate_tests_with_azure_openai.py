@@ -8,7 +8,7 @@ mittels Azure OpenAI.
 Erwartet Umgebungsvariablen:
 - AZURE_OPENAI_ENDPOINT       z.B. https://<resource>.openai.azure.com
 - AZURE_OPENAI_API_KEY
-- AZURE_OPENAI_DEPLOYMENT     Name des Deployments, z.B. gpt-4o
+- AZURE_OPENAI_DEPLOYMENT     Name des Deployments, z.B. gpt-4o oder o3-mini
 
 Optional (für exakte Diffs):
 - GIT_BASE_SHA
@@ -131,7 +131,7 @@ def is_bootstrap_class(java_source: str, class_name: Optional[str]) -> bool:
 
 
 # ---------------------------------------------------------
-# Azure OpenAI Aufruf
+# Azure OpenAI Aufruf (ohne max_tokens / temperature)
 # ---------------------------------------------------------
 def call_azure_openai(prompt: str) -> str:
     endpoint = os.environ["AZURE_OPENAI_ENDPOINT"].rstrip("/")
@@ -145,25 +145,24 @@ def call_azure_openai(prompt: str) -> str:
         "api-key": api_key,
     }
 
+    # WICHTIG: kein max_tokens, keine temperature → kompatibel mit z.B. o3-mini
     body = {
         "messages": [
-          {
-              "role": "system",
-              "content": (
-                  "You are a senior Java developer and test engineer. "
-                  "Generate high-quality, compilable JUnit 5 test classes. "
-                  "Focus on meaningful edge cases, null handling, and business rules. "
-                  "Do NOT change production code; only produce test code. "
-                  "Use JUnit 5 (org.junit.jupiter.api.*) and, if appropriate, Mockito."
-              ),
-          },
-          {
-              "role": "user",
-              "content": prompt,
-          },
-        ],
-        "temperature": 0.2,
-        "max_tokens": 1200,
+            {
+                "role": "system",
+                "content": (
+                    "You are a senior Java developer and test engineer. "
+                    "Generate high-quality, compilable JUnit 5 test classes. "
+                    "Focus on meaningful edge cases, null handling, and business rules. "
+                    "Do NOT change production code; only produce test code. "
+                    "Use JUnit 5 (org.junit.jupiter.api.*) and, if appropriate, Mockito."
+                ),
+            },
+            {
+                "role": "user",
+                "content": prompt,
+            },
+        ]
     }
 
     resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=60)
@@ -258,7 +257,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    source_dir = pathlib.Path(args.source_dir).resolve()
+    source_dir = pathlib.Path(args.source-dir).resolve() if hasattr(args, "source-dir") else pathlib.Path(args.source_dir).resolve()
     test_dir = pathlib.Path(args.test_dir).resolve()
 
     if not source_dir.exists():
