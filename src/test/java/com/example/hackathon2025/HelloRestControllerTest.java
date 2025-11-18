@@ -1,15 +1,12 @@
 package com.example.hackathon2025;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.web.bind.annotation.GetMapping;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.lang.reflect.Method;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -26,7 +23,21 @@ class HelloRestControllerTest {
         assertNotNull(result, "Returned map should not be null");
         assertEquals(1, result.size(), "Returned map should contain exactly one entry");
         assertTrue(result.containsKey(EXPECTED_KEY), "Returned map should contain the key 'message'");
-        assertEquals(EXPECTED_VALUE, result.get(EXPECTED_KEY), "Returned message value is unexpected");
+        assertEquals(EXPECTED_VALUE, result.get(EXPECTED_KEY), "Returned message must match expected text");
+
+        // Ensure no extra keys
+        assertEquals(Set.of(EXPECTED_KEY), result.keySet(), "Map should only contain the 'message' key");
+    }
+
+    @Test
+    void testHelloValueIsNonEmpty() {
+        HelloRestController controller = new HelloRestController();
+        Map<String, String> result = controller.hello();
+
+        String value = result.get(EXPECTED_KEY);
+        assertNotNull(value, "Message value should not be null");
+        assertFalse(value.isBlank(), "Message value should not be blank");
+        assertTrue(value.length() > 10, "Message value should be reasonably long");
     }
 
     @Test
@@ -34,54 +45,51 @@ class HelloRestControllerTest {
         HelloRestController controller = new HelloRestController();
         Map<String, String> result = controller.hello();
 
-        assertThrows(UnsupportedOperationException.class, () -> result.put("another", "value"),
-                "Map returned by hello() should be immutable and throw on put");
+        // Attempting mutation should throw UnsupportedOperationException for Map.of immutable map
+        assertThrows(UnsupportedOperationException.class, () -> result.put("another", "x"));
+        assertThrows(UnsupportedOperationException.class, () -> result.remove(EXPECTED_KEY));
+        assertThrows(UnsupportedOperationException.class, () -> result.clear());
 
-        assertThrows(UnsupportedOperationException.class, () -> result.remove(EXPECTED_KEY),
-                "Map returned by hello() should be immutable and throw on remove");
+        // Original content still intact
+        assertEquals(EXPECTED_VALUE, result.get(EXPECTED_KEY));
     }
 
     @Test
-    void testMultipleCallsReturnConsistentValue() {
+    void testMultipleCallsReturnEquivalentMaps() {
         HelloRestController controller = new HelloRestController();
+        Map<String, String> first = controller.hello();
+        Map<String, String> second = controller.hello();
 
-        for (int i = 0; i < 10; i++) {
-            Map<String, String> result = controller.hello();
-            assertNotNull(result.get(EXPECTED_KEY), "Message value should not be null on call " + i);
-            assertEquals(EXPECTED_VALUE, result.get(EXPECTED_KEY), "Message value should be consistent across calls");
+        // Should be value-equal across invocations
+        assertEquals(first, second, "Consecutive calls should return maps with equal content");
+
+        // Each entry should be non-null
+        first.forEach((k, v) -> {
+            assertNotNull(k, "Key must not be null");
+            assertNotNull(v, "Value must not be null");
+        });
+    }
+
+    @Test
+    void testHelloMethodHasGetMappingWithExpectedPath() throws NoSuchMethodException {
+        // Validate that the hello() method is annotated with @GetMapping and contains the expected path
+        Method helloMethod = HelloRestController.class.getMethod("hello");
+        GetMapping mapping = helloMethod.getAnnotation(GetMapping.class);
+        assertNotNull(mapping, "hello() should be annotated with @GetMapping");
+
+        // Check both value and path attributes (either may be used)
+        String[] values = mapping.value();
+        String[] paths = mapping.path();
+
+        boolean containsExpected = contains("/api/hello", values) || contains("/api/hello", paths);
+        assertTrue(containsExpected, "@GetMapping should map to '/api/hello'");
+    }
+
+    private static boolean contains(String expected, String[] arr) {
+        if (arr == null) return false;
+        for (String s : arr) {
+            if (Objects.equals(expected, s)) return true;
         }
-    }
-
-    @Test
-    void testConcurrentAccessConsistency() throws InterruptedException, ExecutionException {
-        HelloRestController controller = new HelloRestController();
-        int threads = 20;
-        ExecutorService executor = Executors.newFixedThreadPool(threads);
-        try {
-            List<Callable<String>> tasks = new ArrayList<>();
-            for (int i = 0; i < threads; i++) {
-                tasks.add(() -> controller.hello().get(EXPECTED_KEY));
-            }
-
-            List<java.util.concurrent.Future<String>> futures = executor.invokeAll(tasks);
-            for (java.util.concurrent.Future<String> f : futures) {
-                assertEquals(EXPECTED_VALUE, f.get(), "Concurrent call returned unexpected message");
-            }
-        } finally {
-            executor.shutdownNow();
-        }
-    }
-
-    @Test
-    void testNoAdditionalKeysAndValueNotEmpty() {
-        HelloRestController controller = new HelloRestController();
-        Map<String, String> result = controller.hello();
-
-        Set<String> keys = result.keySet();
-        assertEquals(Set.of(EXPECTED_KEY), keys, "Only the 'message' key should be present");
-        String value = result.get(EXPECTED_KEY);
-        assertNotNull(value, "Message value should not be null");
-        assertFalse(value.isEmpty(), "Message value should not be empty");
-        assertTrue(value.contains("Hackathon 2025"), "Message should mention 'Hackathon 2025'");
+        return false;
     }
 }
