@@ -2,10 +2,10 @@
 """
 generate_ui_tests_with_azure_openai.py
 
-Spezielle Version für das Projekt "hackathon2025":
+Für das Projekt "hackathon2025":
 
 - Liest WebController.java und HelloRestController.java
-- Liest index.html (und optional hello*.html)
+- Liest index.html
 - Ruft Azure OpenAI auf, um einen Playwright-UI-Test zu generieren
 - Schreibt: tests/ui-hackathon2025.spec.ts
 
@@ -22,7 +22,7 @@ import json
 import requests
 import re
 
-API_VERSION = "2024-02-15-preview"  # ggf. an deine Azure OpenAI Ressource anpassen
+API_VERSION = "2024-02-15-preview"  # ggf. anpassen
 
 
 def read_file(path: pathlib.Path) -> str:
@@ -57,7 +57,7 @@ def call_azure_openai_for_playwright(prompt: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ]
-        # kein temperature, kein max_tokens → kompatibel mit neueren Azure-Modellen
+        # kein temperature, kein max_tokens → kompatibel z.B. mit o3 / neueren Modellen
     }
 
     resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=90)
@@ -77,71 +77,81 @@ def strip_code_fences(text: str) -> str:
     return text.strip()
 
 
-def build_prompt(web_controller: str, hello_controller: str, index_html: str, extra_templates: dict[str, str]) -> str:
-    extras_str = ""
-    for name, content in extra_templates.items():
-        if not content.strip():
-            continue
-        extras_str += f"\nTemplate {name}:\n```html\n{content}\n```\n"
-
+def build_prompt(web_controller: str, hello_controller: str, index_html: str) -> str:
+    # Hier beschreiben wir dein aktuelles UI-Verhalten EXAKT
     return textwrap.dedent(f"""
     We are working on a Spring Boot demo app called "hackathon2025".
     It runs on http://localhost:8080.
 
-    We have:
-    - a WebController that serves the main HTML UI
-    - a HelloRestController that exposes a "hello" REST endpoint
-    - HTML templates (Thymeleaf or classic HTML) for the UI
-
-    Your task:
-    Generate a single Playwright test file `ui-hackathon2025.spec.ts` that:
-
-    1. Opens `http://localhost:8080/`
-       - Verifies the page title (e.g. contains "Hackathon" or similar)
-       - Verifies the main heading is visible
-       - Verifies that key buttons/links are visible (e.g. upload, hello, navigation)
-
-    2. If the UI exposes a way to trigger the hello endpoint via a button or link:
-       - Click that element
-       - Assert that the expected hello text appears
-
-    3. If there is a form or input field visible on the start page:
-       - Fill it with some example value
-       - Submit it
-       - Check that a response/result appears (e.g. some text or table)
-
-    General rules:
-    - Use TypeScript and import from '@playwright/test':
-        import {{ test, expect }} from '@playwright/test';
-    - Use Playwright test fixtures with `test(...)`.
-    - Use robust selectors: `getByRole`, `getByText`, `getByLabel`, etc.
-    - Assume the base URL is `http://localhost:8080`.
-    - Do NOT include any explanations or comments, only the code.
-
-    Here is the WebController:
-
-    ```java
-    {web_controller}
-    ```
-
-    Here is the HelloRestController:
-
-    ```java
-    {hello_controller}
-    ```
-
-    Here is the index.html template:
+    The main HTML (index.html) looks like this (simplified):
 
     ```html
     {index_html}
     ```
 
-    {extras_str}
+    Important behavior:
+
+    - On initial load:
+      - The page is served at GET /.
+      - The <title> contains something like "Hackathon".
+      - The main <h1> heading contains "Hackathon 2025 Demo".
+      - There is a button with text "Test REST" that calls the JavaScript function callApi().
+      - There is a <p id="apiResult"></p> element.
+      - Initially, the #apiResult paragraph is present in the DOM but empty. It may effectively be hidden
+        (zero height), so DO NOT assert that it is visible. Only assert that it is attached and its
+        text content is an empty string.
+
+    - On user interaction:
+      - When the user clicks the "Test REST" button, the function callApi() does:
+          fetch('/api/hello')
+          then reads the JSON
+          then sets document.getElementById('apiResult').innerText = JSON.stringify(json)
+      - After the click, #apiResult should have a non-empty text content that is valid JSON.
+        You can parse it with JSON.parse and assert that the resulting object has at least one field,
+        and that it likely contains some kind of "hello" message. Do NOT rely on an exact JSON shape,
+        but you can check that the raw text contains 'Hello' (case-insensitive).
+
+    Your task:
+
+    Generate a single Playwright test file in TypeScript, named `ui-hackathon2025.spec.ts`, that:
+
+    1. Opens `http://localhost:8080/`.
+    2. Verifies:
+       - The page title contains 'Hackathon'.
+       - The main heading (h1) contains 'Hackathon 2025 Demo'.
+       - The button with text 'Test REST' is visible.
+       - The #apiResult element is attached to the DOM and its text content is initially an empty string.
+         Do NOT assert that it is visible.
+
+    3. Then clicks the 'Test REST' button and verifies:
+       - #apiResult eventually has a non-empty text.
+       - The text is valid JSON (JSON.parse does not throw).
+       - Optionally, the text contains 'Hello' (case-insensitive).
+
+    General rules:
+    - Use TypeScript and import from '@playwright/test':
+        import {{ test, expect }} from '@playwright/test';
+    - Use Playwright test fixtures with `test(...)`.
+    - Use robust selectors: `getByRole`, `getByText`, and `locator('#apiResult')`.
+    - Assume the base URL is `http://localhost:8080`.
+    - Do NOT include any explanations or comments, only the code.
+
+    For context, here are the controllers (optional background information):
+
+    WebController:
+    ```java
+    {web_controller}
+    ```
+
+    HelloRestController:
+    ```java
+    {hello_controller}
+    ```
     """)
 
 
 def main():
-    # Wir nehmen an: dieses Skript liegt in scripts/, Repo-Root ist eine Ebene höher
+    # Skript liegt in scripts/, Repo-Root ist eine Ebene höher
     repo_root = pathlib.Path(__file__).resolve().parents[1]
 
     controllers_dir = repo_root / "src/main/java/com/example/hackathon2025"
@@ -155,19 +165,10 @@ def main():
     hello_controller = read_file(hello_controller_path)
     index_html = read_file(index_html_path)
 
-    extra_templates: dict[str, str] = {}
-    # Beispiel: wenn du weitere Templates nutzen möchtest
-    for candidate in ["hello.html", "hello.html", "start.html"]:
-        p = templates_dir / candidate
-        if p.exists():
-            extra_templates[p.name] = read_file(p)
-
-    if not web_controller.strip():
-        print(f"[WARN] WebController.java leer oder nicht gefunden: {web_controller_path}")
     if not index_html.strip():
         print(f"[WARN] index.html leer oder nicht gefunden: {index_html_path}")
 
-    prompt = build_prompt(web_controller, hello_controller, index_html, extra_templates)
+    prompt = build_prompt(web_controller, hello_controller, index_html)
 
     print("[INFO] Rufe Azure OpenAI zur Generierung von Playwright-Tests auf...")
     completion = call_azure_openai_for_playwright(prompt)
