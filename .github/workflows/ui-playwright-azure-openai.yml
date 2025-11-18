@@ -59,20 +59,16 @@ jobs:
           python-version: '3.11'
 
       # App starten, UI-Tests generieren und Playwright ausführen
-      - name: Start app, generate UI tests and run Playwright
+            - name: Start app, generate UI tests and run Playwright
         run: |
-          # Jar bestimmen
           APP_JAR=$(ls target/*SNAPSHOT.jar 2>/dev/null || ls target/*.jar 2>/dev/null | head -n 1)
           if [ -z "$APP_JAR" ]; then
             echo "Keine JAR-Datei in target/ gefunden."
             exit 1
           fi
-          echo "Starte Anwendung mit: java -jar $APP_JAR"
 
-          # Spring Boot im Hintergrund starten
           java -jar "$APP_JAR" &
           APP_PID=$!
-          echo "App PID: $APP_PID"
           echo "$APP_PID" > app.pid
 
           echo "Warte, bis http://localhost:${APP_PORT}/ erreichbar ist..."
@@ -85,16 +81,11 @@ jobs:
             sleep 2
           done
 
-          # Falls Azure-OpenAI-Skript vorhanden ist: UI-Tests generieren
-          if [ -f scripts/generate_ui_tests_with_azure_openai.py ]; then
-            echo "Generiere Playwright-UI-Tests mittels Azure OpenAI..."
-            python3 scripts/generate_ui_tests_with_azure_openai.py
-          else
-            echo "Kein scripts/generate_ui_tests_with_azure_openai.py gefunden – überspringe Generierung."
-          fi
+          echo "Generiere Playwright-UI-Tests mittels Azure OpenAI..."
+          python3 scripts/generate_ui_tests_with_azure_openai.py
 
-          # Playwright-Tests ausführen
           npx playwright test
+
 
       # App sauber stoppen
       - name: Stop app
