@@ -2,11 +2,11 @@ package com.example.hackathon2025;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
-import org.springframework.ui.ConcurrentModel;
+
 import org.springframework.ui.Model;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class WebControllerTest {
 
@@ -18,30 +18,34 @@ class WebControllerTest {
     }
 
     @Test
-    void indexReturnsViewAndAddsTitle_usingConcurrentModel() {
-        ConcurrentModel model = new ConcurrentModel();
+    void index_shouldReturnIndexView_andAddTitleAttribute() {
+        // Arrange
+        Model model = mock(Model.class);
 
+        // Act
         String view = controller.index(model);
 
-        assertEquals("index", view, "Controller should return the 'index' view name");
-        assertTrue(model.containsAttribute("title"), "Model should contain 'title' attribute");
-        assertEquals("Hackathon 2025 Demo", model.getAttribute("title"), "Title attribute should match expected value");
+        // Assert
+        assertEquals("index", view, "Controller should return view name 'index'");
+        verify(model, times(1)).addAttribute("title", "Hackathon 2025 Demo");
+        verifyNoMoreInteractions(model);
     }
 
     @Test
-    void indexAddsTitleToMockModelAndReturnsIndex() {
-        Model mockModel = Mockito.mock(Model.class);
-
-        String view = controller.index(mockModel);
-
-        assertEquals("index", view, "Controller should return the 'index' view name");
-        Mockito.verify(mockModel).addAttribute("title", "Hackathon 2025 Demo");
-        Mockito.verifyNoMoreInteractions(mockModel);
+    void index_withNullModel_shouldThrowNullPointerException() {
+        // If a null Model is passed, addAttribute will cause a NPE — ensure this behavior is visible.
+        assertThrows(NullPointerException.class, () -> controller.index(null));
     }
 
     @Test
-    void indexWithNullModelThrowsNullPointerException() {
-        assertThrows(NullPointerException.class, () -> controller.index(null),
-                "Calling index with null Model should result in NullPointerException");
+    void index_whenModelThrowsException_shouldPropagateException() {
+        // Arrange
+        Model model = mock(Model.class);
+        doThrow(new IllegalStateException("model failure")).when(model).addAttribute(anyString(), any());
+
+        // Act & Assert
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> controller.index(model));
+        assertEquals("model failure", ex.getMessage());
+        verify(model, times(1)).addAttribute("title", "Hackathon 2025 Demo");
     }
 }

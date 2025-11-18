@@ -1,88 +1,71 @@
 package com.example.hackathon2025;
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class HelloRestControllerTest {
 
-    private HelloRestController controller;
     private static final String EXPECTED_KEY = "message";
     private static final String EXPECTED_VALUE = "Hello again and again from REST API for Hackathon 2025!";
 
-    @BeforeEach
-    void setUp() {
-        controller = new HelloRestController();
-    }
-
     @Test
-    @DisplayName("hello() returns a non-null map containing the expected key and value")
     void testHelloReturnsExpectedMessage() {
+        HelloRestController controller = new HelloRestController();
         Map<String, String> result = controller.hello();
 
-        assertNotNull(result, "Result map should not be null");
-        assertEquals(1, result.size(), "Result map should have exactly one entry");
-        assertTrue(result.containsKey(EXPECTED_KEY), "Result map should contain the 'message' key");
-        assertEquals(EXPECTED_VALUE, result.get(EXPECTED_KEY), "Message value should match expected text");
+        assertNotNull(result, "Returned map should not be null");
+        assertEquals(1, result.size(), "Returned map should contain exactly one entry");
+        assertTrue(result.containsKey(EXPECTED_KEY), "Returned map should contain the key 'message'");
+        assertEquals(EXPECTED_VALUE, result.get(EXPECTED_KEY), "Returned message value is unexpected");
     }
 
     @Test
-    @DisplayName("hello() result should be immutable (modification attempts throw UnsupportedOperationException)")
-    void testHelloResultIsImmutable() {
+    void testHelloMapIsImmutable() {
+        HelloRestController controller = new HelloRestController();
         Map<String, String> result = controller.hello();
 
-        // Map.of returns an immutable map; attempts to modify should throw UOE
-        assertThrows(UnsupportedOperationException.class, () -> {
-            result.put("another", "value");
-        }, "Attempting to put into immutable map should throw UnsupportedOperationException");
+        assertThrows(UnsupportedOperationException.class, () -> result.put("another", "value"),
+                "Map returned by hello() should be immutable and throw on put");
 
-        assertThrows(UnsupportedOperationException.class, () -> {
-            result.clear();
-        }, "Attempting to clear immutable map should throw UnsupportedOperationException");
+        assertThrows(UnsupportedOperationException.class, () -> result.remove(EXPECTED_KEY),
+                "Map returned by hello() should be immutable and throw on remove");
     }
 
     @Test
-    @DisplayName("Multiple calls to hello() are idempotent (return equal maps)")
-    void testHelloIdempotentMultipleCalls() {
-        Map<String, String> first = controller.hello();
-        Map<String, String> second = controller.hello();
+    void testMultipleCallsReturnConsistentValue() {
+        HelloRestController controller = new HelloRestController();
 
-        assertEquals(first, second, "Subsequent calls to hello() should return equal maps");
-        assertEquals(EXPECTED_VALUE, second.get(EXPECTED_KEY), "Value should remain the expected message");
+        for (int i = 0; i < 10; i++) {
+            Map<String, String> result = controller.hello();
+            assertNotNull(result.get(EXPECTED_KEY), "Message value should not be null on call " + i);
+            assertEquals(EXPECTED_VALUE, result.get(EXPECTED_KEY), "Message value should be consistent across calls");
+        }
     }
 
     @Test
-    @DisplayName("Concurrent access to hello() returns consistent results without throwing exceptions")
-    void testHelloConcurrentAccess() throws InterruptedException, ExecutionException {
-        final int threads = 20;
-        final int callsPerThread = 10;
+    void testConcurrentAccessConsistency() throws InterruptedException, ExecutionException {
+        HelloRestController controller = new HelloRestController();
+        int threads = 20;
         ExecutorService executor = Executors.newFixedThreadPool(threads);
-
         try {
-            Callable<Map<String, String>> task = () -> controller.hello();
+            List<Callable<String>> tasks = new ArrayList<>();
+            for (int i = 0; i < threads; i++) {
+                tasks.add(() -> controller.hello().get(EXPECTED_KEY));
+            }
 
-            // Submit many tasks concurrently
-            Future<Map<String, String>>[] futures = IntStream.range(0, threads * callsPerThread)
-                    .mapToObj(i -> executor.submit(task))
-                    .toArray(Future[]::new);
-
-            // Ensure all returned maps are non-null and equal to expected
-            for (Future<Map<String, String>> f : futures) {
-                Map<String, String> map = f.get(); // may throw ExecutionException
-                assertNotNull(map, "Concurrent call should not return null");
-                assertEquals(EXPECTED_VALUE, map.get(EXPECTED_KEY), "Concurrent call returned unexpected value");
-                assertEquals(1, map.size(), "Concurrent call should return a single-entry map");
+            List<java.util.concurrent.Future<String>> futures = executor.invokeAll(tasks);
+            for (java.util.concurrent.Future<String> f : futures) {
+                assertEquals(EXPECTED_VALUE, f.get(), "Concurrent call returned unexpected message");
             }
         } finally {
             executor.shutdownNow();
@@ -90,18 +73,15 @@ class HelloRestControllerTest {
     }
 
     @Test
-    @DisplayName("Returned map contains no null keys or values")
-    void testNoNullKeysOrValues() {
+    void testNoAdditionalKeysAndValueNotEmpty() {
+        HelloRestController controller = new HelloRestController();
         Map<String, String> result = controller.hello();
 
-        // Validate keys and values are non-null
-        result.forEach((k, v) -> {
-            assertNotNull(k, "Key should not be null");
-            assertNotNull(v, "Value should not be null");
-        });
-
-        // Additionally ensure there are no unexpected entries
-        assertTrue(result.keySet().stream().allMatch(Objects::nonNull), "All keys must be non-null");
-        assertTrue(result.values().stream().allMatch(Objects::nonNull), "All values must be non-null");
+        Set<String> keys = result.keySet();
+        assertEquals(Set.of(EXPECTED_KEY), keys, "Only the 'message' key should be present");
+        String value = result.get(EXPECTED_KEY);
+        assertNotNull(value, "Message value should not be null");
+        assertFalse(value.isEmpty(), "Message value should not be empty");
+        assertTrue(value.contains("Hackathon 2025"), "Message should mention 'Hackathon 2025'");
     }
 }
