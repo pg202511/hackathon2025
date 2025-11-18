@@ -2,12 +2,16 @@
 """
 generate_ui_tests_with_azure_openai.py
 
-Erzeugt ein Playwright-Testfile für ALLE relevanten Controller + HTML-Templates.
+Erzeugt EIN Playwright-Testfile für:
 
-- Sammelt alle *Controller.java unter src/main/java
-- Sammelt alle .html-Templates unter src/main/resources/templates
-- Ruft Azure OpenAI auf, um ein TypeScript-Testfile zu generieren:
-    tests/ui-hackathon2025.spec.ts
+- Die Startseite (GET /, index.html) – UI-Test mit Button und REST-Aufruf
+- Alle REST-Endpoints unter /api/... – API-Tests via Playwright request
+
+Strenge Regeln:
+- Keine erfundenen Routen oder Seiten
+- Nur Routen testen, die klar aus den Controllern hervorgehen
+- Nur Titel testen, wenn im Template explizit ein <title> steht
+- Keine verrückten String-Tricks wie .replace(' ', '') zum Vergleichen
 
 Erwartet Umgebungsvariablen:
 - AZURE_OPENAI_ENDPOINT
@@ -47,9 +51,10 @@ def call_azure_openai_for_playwright(prompt: str) -> str:
     system_prompt = (
         "You are a senior test engineer specialized in web UIs and Playwright. "
         "You write high-quality, compilable Playwright tests in TypeScript "
-        "using '@playwright/test'. Tests must focus on realistic user flows, "
-        "happy-path and basic validation checks. Do NOT explain anything; "
-        "only output the TypeScript test file content."
+        "using '@playwright/test'. Tests must focus on realistic user flows "
+        "and robust validation checks. You do NOT invent endpoints or pages. "
+        "You NEVER rely on fragile exact strings when a looser regex or "
+        "substring check suffices."
     )
 
     body = {
@@ -57,7 +62,7 @@ def call_azure_openai_for_playwright(prompt: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ]
-        # kein max_tokens / keine temperature → kompatibel mit neueren Azure-Modellen
+        # kein max_tokens / keine temperature → Azure-kompatibel
     }
 
     resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=90)
@@ -79,11 +84,11 @@ def strip_code_fences(text: str) -> str:
 
 def collect_controllers(controllers_dir: pathlib.Path):
     """
-    Sammelt alle *Controller.java-Dateien unterhalb des angegebenen Verzeichnisses.
+    Sammelt alle *.java-Dateien unterhalb des Controllers-Verzeichnisses.
     Rückgabe: Liste von Dicts mit {name, path, code}.
     """
     result = []
-    for path in controllers_dir.rglob("*Controller.java"):
+    for path in controllers_dir.rglob("*.java"):
         code = read_file(path)
         result.append(
             {
@@ -95,76 +100,49 @@ def collect_controllers(controllers_dir: pathlib.Path):
     return result
 
 
-def collect_templates(templates_dir: pathlib.Path):
+def get_index_html(templates_dir: pathlib.Path) -> str:
     """
-    Sammelt alle .html-Templates unterhalb des angegebenen Verzeichnisses.
-    Rückgabe: Liste von Dicts mit {name, path, code}.
+    Sucht index.html (oder ähnliches) und gibt den Inhalt zurück.
     """
-    result = []
+    for path in templates_dir.rglob("index.html"):
+        return read_file(path)
+    # Fallback: irgendein Template
     for path in templates_dir.rglob("*.html"):
-        code = read_file(path)
-        result.append(
-            {
-                "name": path.name,
-                "path": str(path),
-                "code": code,
-            }
-        )
-    return result
+        return read_file(path)
+    return ""
 
 
-def build_prompt(controllers, templates) -> str:
-    """
-    Baut einen Prompt, der:
-    - den bestehenden Index-Flow stabil hält
-    - zusätzliche Tests für alle weiteren Controller/HTML-Seiten verlangt
-    """
-
-    # Für die Beschreibung der Index-Seite (falls vorhanden)
-    index_html_snippet = ""
-    for t in templates:
-        if t["name"].lower().startswith("index."):
-            index_html_snippet = t["code"]
-            break
-
+def build_prompt(controllers, index_html: str) -> str:
     controllers_str = ""
     for c in controllers:
         controllers_str += f"\nController {c['name']} (Pfad: {c['path']}):\n```java\n{c['code']}\n```\n"
-
-    templates_str = ""
-    for t in templates:
-        templates_str += f"\nTemplate {t['name']} (Pfad: {t['path']}):\n```html\n{t['code']}\n```\n"
 
     return textwrap.dedent(f"""
     We are working on a Spring Boot demo app called "hackathon2025".
     It runs on http://localhost:8080.
 
-    The code base contains multiple Spring MVC controllers and multiple HTML (Thymeleaf) templates.
-    Your job is to generate ONE Playwright test file in TypeScript that covers:
+    There is an index page (GET /) rendered via a Thymeleaf template, and there are
+    REST endpoints implemented in Spring controllers, especially under /api/... paths.
 
-    - The main index page (GET /)
-    - All other relevant routes and views that can be inferred from:
-      - the controller mappings (@GetMapping, @RequestMapping, etc.)
-      - the returned view names
-      - the HTML templates under src/main/resources/templates
+    Your job is to generate ONE Playwright test file in TypeScript named
+    `ui-hackathon2025.spec.ts` that contains:
 
-    The goal is:
-    - to have at least one Playwright test for EVERY controller/view combination that renders a page,
-    - verifying basic rendering (title, main heading, key buttons/links),
-    - and invoking REST interactions when obvious (e.g. buttons that trigger fetch() calls).
+    1) A UI test for the index page (GET /)
+    2) API tests for all REST endpoints whose path clearly starts with /api/
+       and that return JSON.
 
-    === CURRENT INDEX PAGE BEHAVIOR (must be preserved) ===
+    === INDEX PAGE BEHAVIOR (MUST BE STABLE) ===
 
-    The index.html currently looks like this (or very similar):
+    The index.html currently looks like this (simplified):
 
     ```html
-    {index_html_snippet}
+    {index_html}
     ```
 
-    The intended UI behavior for the index page is:
+    The intended behavior for GET / is:
 
     - GET / returns the main page.
-    - <title> should contain the word "Hackathon".
+    - The <title> contains the word "Hackathon".
     - The main <h1> heading contains "Hackathon 2025 Demo".
     - There is a button with the text "Test REST" that calls the JavaScript function callApi().
     - There is a <p id="apiResult"></p> element.
@@ -173,13 +151,13 @@ def build_prompt(controllers, templates) -> str:
         - The browser calls fetch('/api/hello').
         - The response is JSON.
         - document.getElementById('apiResult').innerText is set to JSON.stringify(json).
-        - After the click, #apiResult contains a non-empty JSON string that should contain the word "Hello".
+        - After the click, #apiResult contains a non-empty JSON string that should contain
+          a 'hello' message.
 
-    You must include a test with the EXACT name:
+    For this, you MUST include a test with the EXACT name:
       "hackathon2025 UI: initial render and REST interaction"
-    that implements exactly this flow for GET /.
 
-    Example structure for that first test (adapt it only if the HTML/behavior really changed):
+    Its structure MUST closely follow this pattern:
 
     ```ts
     import {{ test, expect }} from '@playwright/test';
@@ -206,71 +184,77 @@ def build_prompt(controllers, templates) -> str:
     }});
     ```
 
-    === ADDITIONAL CONTROLLERS AND HTML TEMPLATES ===
+    Only adapt selectors or expected texts IF the provided HTML has clearly changed.
 
-    Here are all controllers:
+    === CONTROLLERS AND REST ENDPOINTS ===
+
+    Here are all Java controllers:
 
     {controllers_str}
 
-    Here are all HTML templates:
+    From these controllers, you must:
 
-    {templates_str}
+    - Identify all REST endpoints (e.g. methods annotated with @GetMapping, @PostMapping, @RequestMapping)
+      whose path clearly starts with '/api/'.
+    - For each such endpoint that returns JSON, create a dedicated API test in the SAME file
+      (ui-hackathon2025.spec.ts).
 
-    Your tasks for ADDITIONAL tests:
+    For API tests:
 
-    1. Inspect all controllers (*Controller.java) and identify GET routes and view names
-       (e.g. @GetMapping("/goodbye") returning "goodbye").
+    - Use Playwright's APIRequestContext via the `request` fixture:
+        test('...', async ({{ request }}) => {{ ... }})
+    - For each /api/... endpoint:
+        - Perform a GET request (or the appropriate HTTP method) to
+          'http://localhost:8080<path>'.
+        - Assert that the status is 200.
+        - Parse the JSON body.
+        - Assert that the parsed value is an object and has at least one field.
+        - If the controller clearly uses a hard-coded message like
+          "Hello from rest api for hackathon 2025!!!", you may:
+            - assert that `String(message).toLowerCase()` contains 'hello'
+        - If the controller clearly uses a message like
+          "good night from rest api for hackathon 2025!!!", you may:
+            - assert that `String(message).toLowerCase()` matches `/good\\s+night/`.
+        - DO NOT use tricks like `'good night'.replace(' ', '')` or similar.
+        - DO NOT assert on exact full strings unless absolutely necessary.
+          Prefer robust checks (contains, regex with optional whitespace).
 
-    2. Inspect the HTML templates and match them to controllers/views by name
-       (e.g. a controller returns "goodbye" -> template goodbye.html or goodby.html).
+    Very important RULES:
 
-    3. For each such page/view:
-       - Add a dedicated Playwright test in the SAME file (ui-hackathon2025.spec.ts).
-       - Name the test descriptively, e.g.:
-           "hackathon2025 UI: render goodbye page"
-           "hackathon2025 UI: render xyz page"
-       - In each test:
-           - Navigate to the appropriate URL (e.g. http://localhost:8080/goodbye).
-           - Assert that the page loads without error.
-           - Assert that the page title and main heading (h1) contain meaningful expected text.
-           - Assert that key buttons/links or text snippets from the template are visible.
-           - If the page triggers REST calls (e.g. via fetch), simulate a click and assert
-             that the response is rendered on the page (similar to the index test).
-
-    General rules for the generated TypeScript file:
-
-    - The file name must be: ui-hackathon2025.spec.ts
+    - DO NOT invent any endpoints or routes.
+      If there is no controller method annotated with a given path, IGNORE it.
+    - DO NOT invent any pages like "/followup" or titles like "Followup Demo"
+      if they are not clearly present in the controllers and templates.
+    - Only assert on <title> if the template clearly contains a <title> element.
+      Otherwise, skip title checks for that page.
+    - Keep test names descriptive but simple, e.g.:
+        test('hackathon2025 API: /api/hello returns JSON', ...)
+        test('hackathon2025 API: /api/goodbye returns JSON', ...)
+    - All tests must be in a single file:
+        ui-hackathon2025.spec.ts
     - Use:
         import {{ test, expect }} from '@playwright/test';
-    - Use Playwright's recommended selectors:
-        page.getByRole(...), page.getByText(...), page.locator(...)
-    - Use `await page.goto('http://localhost:8080/...')` with the correct paths from the controllers.
-    - DO NOT start/stop the backend in the tests; assume it is already running.
-    - Keep the first index test name EXACTLY:
-        'hackathon2025 UI: initial render and REST interaction'
-      and only change selectors/expectations if the provided HTML/controllers clearly require it.
-    - For additional tests, choose clear, unique names.
 
-    Output ONLY the TypeScript code for the test file (no explanations, no comments).
+    Output ONLY the TypeScript code of ui-hackathon2025.spec.ts (no explanations, no comments).
     """)
 
 
 def main():
-    # Wir nehmen an: dieses Skript liegt in scripts/, Repo-Root ist eine Ebene höher
+    # Skript liegt in scripts/, Repo-Root ist eine Ebene höher
     repo_root = pathlib.Path(__file__).resolve().parents[1]
 
     controllers_dir = repo_root / "src/main/java/com/example/hackathon2025"
     templates_dir = repo_root / "src/main/resources/templates"
 
     controllers = collect_controllers(controllers_dir)
-    templates = collect_templates(templates_dir)
+    index_html = get_index_html(templates_dir)
 
     if not controllers:
         print(f"[WARN] Keine Controller unter {controllers_dir} gefunden.")
-    if not templates:
-        print(f"[WARN] Keine HTML-Templates unter {templates_dir} gefunden.")
+    if not index_html:
+        print(f"[WARN] Kein index.html unter {templates_dir} gefunden.")
 
-    prompt = build_prompt(controllers, templates)
+    prompt = build_prompt(controllers, index_html)
 
     print("[INFO] Rufe Azure OpenAI zur Generierung von Playwright-Tests auf...")
     completion = call_azure_openai_for_playwright(prompt)
