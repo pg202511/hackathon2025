@@ -1,63 +1,48 @@
 package com.example.hackathon2025;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ui.ExtendedModelMap;
 import org.springframework.ui.Model;
-import org.mockito.Mockito;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class WebControllerTest {
 
-    private WebController controller;
-
-    @BeforeEach
-    void setUp() {
-        controller = new WebController();
-    }
-
     @Test
-    void indexReturnsIndexViewAndAddsTitleToModel() {
-        Model model = new ExtendedModelMap();
+    void index_shouldReturnIndexViewAndSetTitleAttribute() {
+        WebController controller = new WebController();
+        ExtendedModelMap model = new ExtendedModelMap();
 
         String viewName = controller.index(model);
 
         assertEquals("index", viewName, "Expected view name to be 'index'");
-        assertTrue(model.asMap().containsKey("title"), "Model should contain 'title' attribute");
-        assertEquals("Hackathon 2025 Demo", model.asMap().get("title"),
-                "Model 'title' attribute should have the expected value");
+        assertTrue(model.containsAttribute("title"), "Model should contain 'title' attribute");
+        assertEquals("Hackathon 2025 Demo", model.get("title"));
     }
 
     @Test
-    void indexUsesModelAddAttribute_whenModelIsMocked() {
-        Model mockModel = Mockito.mock(Model.class);
-        // ensure fluent API doesn't break if controller relies on return value (it doesn't, but safe)
-        Mockito.when(mockModel.addAttribute(Mockito.anyString(), Mockito.any())).thenReturn(mockModel);
+    void index_shouldOverwriteExistingTitleAttribute() {
+        WebController controller = new WebController();
+        ExtendedModelMap model = new ExtendedModelMap();
+        // pre-populate with a different title
+        model.addAttribute("title", "Old Title");
+        model.addAttribute("other", 123);
 
-        String viewName = controller.index(mockModel);
+        String viewName = controller.index(model);
 
         assertEquals("index", viewName);
-        Mockito.verify(mockModel).addAttribute("title", "Hackathon 2025 Demo");
-        Mockito.verifyNoMoreInteractions(mockModel);
+        // title should be overwritten by controller
+        assertEquals("Hackathon 2025 Demo", model.get("title"));
+        // other attributes should remain untouched
+        assertEquals(123, model.get("other"));
     }
 
     @Test
-    void indexThrowsNullPointerException_whenModelIsNull() {
-        assertThrows(NullPointerException.class, () -> controller.index(null),
+    void index_shouldThrowWhenModelIsNull() {
+        WebController controller = new WebController();
+        Model nullModel = null;
+
+        assertThrows(NullPointerException.class, () -> controller.index(nullModel),
                 "Calling index with null Model should throw NullPointerException");
-    }
-
-    @Test
-    void indexIsIdempotent_whenCalledMultipleTimesOnSameModel() {
-        Model model = new ExtendedModelMap();
-
-        String first = controller.index(model);
-        String second = controller.index(model);
-
-        assertEquals("index", first);
-        assertEquals("index", second);
-        // The attribute should still be present and have the expected value
-        assertEquals("Hackathon 2025 Demo", model.asMap().get("title"));
     }
 }
