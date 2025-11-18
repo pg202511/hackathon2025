@@ -15,6 +15,6 @@ public class GoodbyRestController {
 
     @GetMapping("/api/goodnight")
     public Map<String, String> goodnight() {
-        return Map.of("message", "Good night from REST API for Hackathon 2025!");
+        return Map.of("message", "Good night from REST API for Hackathon 2025!!!");
     }
 }
