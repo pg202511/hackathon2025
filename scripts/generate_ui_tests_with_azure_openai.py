@@ -78,65 +78,78 @@ def strip_code_fences(text: str) -> str:
 
 
 def build_prompt(web_controller: str, hello_controller: str, index_html: str) -> str:
-    # Hier beschreiben wir dein aktuelles UI-Verhalten EXAKT
+    # Wir beschreiben EXPLIZIT das gewünschte Testmuster
     return textwrap.dedent(f"""
     We are working on a Spring Boot demo app called "hackathon2025".
     It runs on http://localhost:8080.
 
-    The main HTML (index.html) looks like this (simplified):
+    The main HTML (index.html) currently looks like this:
 
     ```html
     {index_html}
     ```
 
-    Important behavior:
+    The intended UI behavior is:
 
-    - On initial load:
-      - The page is served at GET /.
-      - The <title> contains something like "Hackathon".
-      - The main <h1> heading contains "Hackathon 2025 Demo".
-      - There is a button with text "Test REST" that calls the JavaScript function callApi().
-      - There is a <p id="apiResult"></p> element.
-      - Initially, the #apiResult paragraph is present in the DOM but empty. It may effectively be hidden
-        (zero height), so DO NOT assert that it is visible. Only assert that it is attached and its
-        text content is an empty string.
+    - GET / returns the main page.
+    - <title> should contain the word "Hackathon".
+    - The main <h1> heading contains "Hackathon 2025 Demo".
+    - There is a button with the text "Test REST" that calls the JavaScript function callApi().
+    - There is a <p id="apiResult"></p> element.
+      On initial load, #apiResult exists in the DOM, but its text content is an empty string.
+    - When the user clicks the "Test REST" button:
+        - The browser calls fetch('/api/hello').
+        - The response is JSON.
+        - document.getElementById('apiResult').innerText is set to JSON.stringify(json).
+        - After the click, #apiResult contains a non-empty JSON string that should contain the word "Hello".
 
-    - On user interaction:
-      - When the user clicks the "Test REST" button, the function callApi() does:
-          fetch('/api/hello')
-          then reads the JSON
-          then sets document.getElementById('apiResult').innerText = JSON.stringify(json)
-      - After the click, #apiResult should have a non-empty text content that is valid JSON.
-        You can parse it with JSON.parse and assert that the resulting object has at least one field,
-        and that it likely contains some kind of "hello" message. Do NOT rely on an exact JSON shape,
-        but you can check that the raw text contains 'Hello' (case-insensitive).
+    You must generate a SINGLE Playwright test file in TypeScript named `ui-hackathon2025.spec.ts`.
+    The file must:
 
-    Your task:
-
-    Generate a single Playwright test file in TypeScript, named `ui-hackathon2025.spec.ts`, that:
-
-    1. Opens `http://localhost:8080/`.
-    2. Verifies:
-       - The page title contains 'Hackathon'.
-       - The main heading (h1) contains 'Hackathon 2025 Demo'.
-       - The button with text 'Test REST' is visible.
-       - The #apiResult element is attached to the DOM and its text content is initially an empty string.
-         Do NOT assert that it is visible.
-
-    3. Then clicks the 'Test REST' button and verifies:
-       - #apiResult eventually has a non-empty text.
-       - The text is valid JSON (JSON.parse does not throw).
-       - Optionally, the text contains 'Hello' (case-insensitive).
-
-    General rules:
-    - Use TypeScript and import from '@playwright/test':
+    - Import Playwright test functions:
         import {{ test, expect }} from '@playwright/test';
-    - Use Playwright test fixtures with `test(...)`.
-    - Use robust selectors: `getByRole`, `getByText`, and `locator('#apiResult')`.
-    - Assume the base URL is `http://localhost:8080`.
-    - Do NOT include any explanations or comments, only the code.
+    - Contain exactly ONE test named:
+        "hackathon2025 UI: initial render and REST interaction"
+      (do not change this test name unless the user interface changes in a way that makes this name misleading).
 
-    For context, here are the controllers (optional background information):
+    The test implementation MUST follow this structure:
+
+    1. Navigate to `http://localhost:8080/`.
+    2. Assert that the page title contains "Hackathon".
+    3. Get the main heading (h1) using getByRole('heading', {{ level: 1 }}) and assert that it contains "Hackathon 2025 Demo".
+    4. Get the "Test REST" button using getByRole('button', {{ name: 'Test REST' }}) and assert that it is visible.
+    5. Get the locator for '#apiResult':
+         const apiResult = page.locator('#apiResult');
+       - Assert that count() is > 0 (the element exists).
+       - Assert that its text content is initially the empty string:
+           await expect(apiResult).toHaveText('');
+    6. Click the "Test REST" button.
+    7. Wait until #apiResult has a non-empty text:
+         await expect(apiResult).not.toHaveText('', {{ timeout: 5000 }});
+    8. Read the innerText of #apiResult, parse it as JSON, and assert:
+       - parsing does not return null,
+       - the parsed value is an object,
+       - Object.keys(parsed).length > 0,
+       - the raw text (toLowerCase()) contains "hello".
+
+    You can adapt SELECTORS or EXPECTED TEXTS ONLY if the provided HTML template or controllers clearly require it
+    (for example, the heading text or button label has changed).
+    Otherwise, keep the overall structure, test name, and expectations exactly as described.
+
+    Use exactly this pattern in TypeScript:
+
+    ```ts
+    import {{ test, expect }} from '@playwright/test';
+
+    test('hackathon2025 UI: initial render and REST interaction', async ({ page }) => {{
+      // your steps here, matching the behavior described above
+    }});
+    ```
+
+    Do NOT output any explanation or comments, only the TypeScript test code.
+
+    For additional context only (do not overfit on these, just use them if helpful),
+    here are the controllers:
 
     WebController:
     ```java
@@ -148,6 +161,7 @@ def build_prompt(web_controller: str, hello_controller: str, index_html: str) ->
     {hello_controller}
     ```
     """)
+
 
 
 def main():
