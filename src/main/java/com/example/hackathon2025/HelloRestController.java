@@ -8,6 +8,6 @@ import java.util.Map;
 public class HelloRestController {
     @GetMapping("/api/hello")
     public Map<String,String> hello() {
-        return Map.of("message","Hello from REST API for Hackathon 2025!");
+        return Map.of("message","Hello again from REST API for Hackathon 2025!");
     }
 }
