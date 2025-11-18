@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   ui-tests:
     runs-on: ubuntu-latest
@@ -21,6 +25,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # Java / Spring Boot Build
       - name: Set up JDK 17
@@ -64,7 +70,7 @@ jobs:
       - name: Start app, generate UI tests and run Playwright
         run: |
           echo "Starte Spring Boot Anwendung mit: mvn spring-boot:run"
-          mvn -B -ntp spring-boot:run &
+          mvn -B -ntp spring-boot:run -DskipTests &
           APP_PID=$!
           echo "$APP_PID" > app.pid
 
@@ -86,15 +92,10 @@ jobs:
             exit 1
           fi
 
-          # Falls Azure-OpenAI-Skript vorhanden ist: UI-Tests generieren
-          if [ -f scripts/generate_ui_tests_with_azure_openai.py ]; then
-            echo "Generiere Playwright-UI-Tests mittels Azure OpenAI..."
-            python scripts/generate_ui_tests_with_azure_openai.py
-          else
-            echo "scripts/generate_ui_tests_with_azure_openai.py nicht gefunden – überspringe Generierung."
-          fi
+          echo "Generiere Playwright-UI-Tests mittels Azure OpenAI..."
+          python scripts/generate_ui_tests_with_azure_openai.py
 
-          # Playwright-Tests ausführen
+          echo "Führe Playwright-Tests aus..."
           npx playwright test
 
       # App sauber stoppen
@@ -116,3 +117,36 @@ jobs:
         with:
           name: playwright-report
           path: playwright-report/
+
+      # Änderungen am Test committen & pushen
+      - name: Commit & push generated UI tests
+        if: >
+          success() &&
+          (
+            github.event_name == 'push' ||
+            (github.event_name == 'pull_request' &&
+             github.event.pull_request.head.repo.full_name == github.repository)
+          )
+        env:
+          TARGET_BRANCH: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          CHANGES=$(git status --porcelain "tests" || true)
+          if [ -z "$CHANGES" ]; then
+            echo "Keine neuen oder geänderten UI-Testdateien. Kein Commit nötig."
+            exit 0
+          fi
+
+          echo "Committe folgende Änderungen:"
+          echo "$CHANGES"
+
+          git add tests
+          git commit -m "chore: update AI-generated UI tests (Playwright/Azure OpenAI)" || {
+            echo "Nichts zu committen (evtl. identischer Inhalt)."
+            exit 0
+          }
+
+          echo "Pushe auf Branch: ${TARGET_BRANCH}"
+          git push origin HEAD:"${TARGET_BRANCH}"
