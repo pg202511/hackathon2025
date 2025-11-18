@@ -10,7 +10,7 @@ public class GoodbyRestController {
 
     @GetMapping("/api/goodby")
     public Map<String, String> goodby(@RequestParam(value = "name", defaultValue = "Gast") String name) {
-        return Map.of("message", "Goodbye, " + name + ", from REST API for Hackathon 2025!");
+        return Map.of("message", "Goodbye, " + name + ", from REST API for Hackathon 2025!!!!");
     }
 
     @GetMapping("/api/goodnight")
