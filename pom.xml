@@ -31,6 +31,12 @@
             <version>${evosuiteVersion}</version>
             <scope>test</scope>
         </dependency>
+              <!-- Spring Boot Test (JUnit 5, Mockito, AssertJ, etc.) -->
+         <dependency>
+                  <groupId>org.springframework.boot</groupId>
+                  <artifactId>spring-boot-starter-test</artifactId>
+                  <scope>test</scope>
+         </dependency>
     </dependencies>
     <build>
 
