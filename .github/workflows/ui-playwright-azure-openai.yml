@@ -1,13 +1,10 @@
 name: UI Tests mit Playwright und Azure OpenAI
 
 on:
-  pull_request:
-    branches: [ main ]
   push:
     branches: [ main ]
-
-permissions:
-  contents: read
+  pull_request:
+    branches: [ main ]
 
 jobs:
   ui-tests:
@@ -33,7 +30,7 @@ jobs:
           java-version: '17'
           cache: 'maven'
 
-      - name: Build Spring Boot app (ohne Tests)
+      - name: Build Spring Boot app (skip tests)
         run: mvn -B -ntp clean package -DskipTests
 
       # Node / Playwright
@@ -43,7 +40,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install Node dependencies + Playwright
+      - name: Install Node dependencies and Playwright
         run: |
           if [ -f package-lock.json ]; then
             npm ci
@@ -59,7 +56,7 @@ jobs:
           python-version: '3.11'
 
       # App starten, UI-Tests generieren und Playwright ausführen
-            - name: Start app, generate UI tests and run Playwright
+      - name: Start app, generate UI tests and run Playwright
         run: |
           APP_JAR=$(ls target/*SNAPSHOT.jar 2>/dev/null || ls target/*.jar 2>/dev/null | head -n 1)
           if [ -z "$APP_JAR" ]; then
@@ -67,6 +64,7 @@ jobs:
             exit 1
           fi
 
+          echo "Starte Anwendung mit: java -jar $APP_JAR"
           java -jar "$APP_JAR" &
           APP_PID=$!
           echo "$APP_PID" > app.pid
@@ -77,23 +75,29 @@ jobs:
               echo "App ist erreichbar."
               break
             fi
-            echo "noch nicht erreichbar, warte..."
+            echo "Noch nicht erreichbar, warte..."
             sleep 2
           done
 
-          echo "Generiere Playwright-UI-Tests mittels Azure OpenAI..."
-          python3 scripts/generate_ui_tests_with_azure_openai.py
+          # Falls Azure-OpenAI-Skript vorhanden ist: UI-Tests generieren
+          if [ -f scripts/generate_ui_tests_with_azure_openai.py ]; then
+            echo "Generiere Playwright-UI-Tests mittels Azure OpenAI..."
+            python3 scripts/generate_ui_tests_with_azure_openai.py
+          else
+            echo "scripts/generate_ui_tests_with_azure_openai.py nicht gefunden – überspringe Generierung."
+          fi
 
+          # Playwright-Tests ausführen
           npx playwright test
-
 
       # App sauber stoppen
       - name: Stop app
         if: always()
         run: |
           if [ -f app.pid ]; then
-            echo "Beende App mit PID $(cat app.pid)..."
-            kill "$(cat app.pid)" || true
+            PID=$(cat app.pid)
+            echo "Beende App mit PID $PID ..."
+            kill "$PID" || true
           else
             echo "Keine app.pid gefunden – vermutlich lief die App nicht mehr."
           fi
