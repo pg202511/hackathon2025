@@ -38,19 +38,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # kein cache, weil noch keine lockfiles existieren
 
       - name: Init Node project and install Playwright
         run: |
-          # Wenn kein package.json existiert, ein Minimalprojekt anlegen
           if [ ! -f package.json ]; then
             echo "Kein package.json gefunden – initialisiere Node-Projekt..."
             npm init -y
           fi
 
-          # Playwright Test als Dev-Dependency installieren
           npm install -D @playwright/test
-          # Browser + Abhängigkeiten installieren
           npx playwright install --with-deps
 
       # Python für das Azure-OpenAI-UI-Test-Generator-Skript
@@ -59,34 +55,41 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
       # App starten, UI-Tests generieren und Playwright ausführen
       - name: Start app, generate UI tests and run Playwright
         run: |
-          APP_JAR=$(ls target/*SNAPSHOT.jar 2>/dev/null || ls target/*.jar 2>/dev/null | head -n 1)
-          if [ -z "$APP_JAR" ]; then
-            echo "Keine JAR-Datei in target/ gefunden."
-            exit 1
-          fi
-
-          echo "Starte Anwendung mit: java -jar $APP_JAR"
-          java -jar "$APP_JAR" &
+          echo "Starte Spring Boot Anwendung mit: mvn spring-boot:run"
+          mvn -B -ntp spring-boot:run &
           APP_PID=$!
           echo "$APP_PID" > app.pid
 
           echo "Warte, bis http://localhost:${APP_PORT}/ erreichbar ist..."
+          READY=false
           for i in {1..30}; do
             if curl -fsS "http://localhost:${APP_PORT}/" > /dev/null; then
               echo "App ist erreichbar."
+              READY=true
               break
             fi
             echo "Noch nicht erreichbar, warte..."
             sleep 2
           done
 
+          if [ "$READY" != "true" ]; then
+            echo "App nach 30 Versuchen nicht erreichbar – breche ab."
+            kill "$APP_PID" || true
+            exit 1
+          fi
+
           # Falls Azure-OpenAI-Skript vorhanden ist: UI-Tests generieren
           if [ -f scripts/generate_ui_tests_with_azure_openai.py ]; then
             echo "Generiere Playwright-UI-Tests mittels Azure OpenAI..."
-            python3 scripts/generate_ui_tests_with_azure_openai.py
+            python scripts/generate_ui_tests_with_azure_openai.py
           else
             echo "scripts/generate_ui_tests_with_azure_openai.py nicht gefunden – überspringe Generierung."
           fi
