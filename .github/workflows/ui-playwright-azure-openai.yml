@@ -91,8 +91,9 @@ jobs:
           echo "Generiere Playwright-UI-Tests mittels Azure OpenAI..."
           python scripts/generate_ui_tests_with_azure_openai.py
 
-          echo "Führe Playwright-Tests aus..."
-          npx playwright test
+          echo "Führe Playwright-Tests aus (mit HTML-Report)..."
+          npx playwright test --reporter=html
+
 
       - name: Stop app
         if: always()
