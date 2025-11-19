@@ -5,15 +5,16 @@ generate_ui_tests_with_azure_openai.py
 Erzeugt EIN Playwright-Testfile für:
 
 - Die Startseite (GET /, index.html) – UI-Test mit Button und REST-Aufruf
-- Alle REST-Endpoints unter /api/... – API-Tests via Playwright request
-- Zusätzliche HTML-Seiten, die über Spring MVC Controller gerendert werden
-  (z.B. Methoden mit @GetMapping("/foo") und Rückgabewert String "foo").
+- REST-Endpoints unter /api/... – API-Tests via Playwright request
+- Generische UI-Tests für ALLE HTML-Templates (z.B. followup.html)
 
-Strenge Regeln:
-- KEINE erfundenen Routen oder Seiten
-- Nur Routen testen, die klar aus den Controllern hervorgehen
-- Nur Titel testen, wenn im Template ein <title> steht
-- Keine fragilen String-Tricks wie .replace(' ', '') zum Vergleichen
+Strategie:
+- Azure OpenAI generiert den "intelligenten" Teil:
+  - Test 'hackathon2025 UI: initial render and REST interaction'
+  - API-Tests für /api/... Endpoints
+- Dieses Script hängt für JEDES weitere HTML-Template
+  einen einfachen Smoke-Test hinten dran:
+    - URL-Konvention: /<basename>  (followup.html -> /followup)
 
 Erwartet Umgebungsvariablen:
 - AZURE_OPENAI_ENDPOINT
@@ -29,6 +30,9 @@ import requests
 import re
 
 API_VERSION = "2024-02-15-preview"  # ggf. anpassen
+
+
+# -------------------- Hilfsfunktionen --------------------
 
 
 def read_file(path: pathlib.Path) -> str:
@@ -102,60 +106,33 @@ def collect_controllers(controllers_dir: pathlib.Path):
     return result
 
 
-def collect_templates(templates_dir: pathlib.Path):
-    """
-    Sammelt alle .html-Templates.
-    Rückgabe: Liste von Dicts mit {name, path, code}.
-    """
-    result = []
+def get_index_html(templates_dir: pathlib.Path) -> str:
+    """Versucht index.html zu finden, sonst irgendein Template."""
+    index = templates_dir / "index.html"
+    if index.exists():
+        return read_file(index)
     for path in templates_dir.rglob("*.html"):
-        code = read_file(path)
-        result.append(
-            {
-                "name": path.name,
-                "path": str(path),
-                "code": code,
-            }
-        )
-    return result
+        return read_file(path)
+    return ""
 
 
-def get_index_html(templates) -> str:
-    """
-    Sucht index.html in der Templates-Liste.
-    """
-    for t in templates:
-        if t["name"].lower().startswith("index."):
-            return t["code"]
-    return templates[0]["code"] if templates else ""
-
-
-def build_prompt(controllers, templates) -> str:
+def build_prompt(controllers, index_html: str) -> str:
     controllers_str = ""
     for c in controllers:
         controllers_str += f"\nController {c['name']} (Pfad: {c['path']}):\n```java\n{c['code']}\n```\n"
-
-    templates_str = ""
-    for t in templates:
-        templates_str += f"\nTemplate {t['name']} (Pfad: {t['path']}):\n```html\n{t['code']}\n```\n"
-
-    index_html = get_index_html(templates)
 
     return textwrap.dedent(f"""
     We are working on a Spring Boot demo app called "hackathon2025".
     It runs on http://localhost:8080.
 
-    There is an index page (GET /) rendered via a Thymeleaf template, one or more
-    additional HTML pages, and several REST endpoints implemented in Spring
-    controllers (especially under /api/... paths).
+    There is an index page (GET /) rendered via a Thymeleaf template, and there are
+    REST endpoints implemented in Spring controllers, especially under /api/... paths.
 
     Your job is to generate ONE Playwright test file in TypeScript named
     `ui-hackathon2025.spec.ts` that contains:
 
     1) A UI test for the index page (GET /)
-    2) UI tests for additional HTML pages rendered by Spring MVC controllers
-       (non-REST controllers that return view names as String)
-    3) API tests for all REST endpoints whose path clearly starts with /api/
+    2) API tests for all REST endpoints whose path clearly starts with /api/
        and that return JSON.
 
     === INDEX PAGE BEHAVIOR (MUST BE STABLE) ===
@@ -213,61 +190,13 @@ def build_prompt(controllers, templates) -> str:
 
     Only adapt selectors or expected texts IF the provided HTML has clearly changed.
 
-    === CONTROLLERS AND TEMPLATES (FULL CONTEXT) ===
+    === CONTROLLERS (CONTEXT FOR API TESTS) ===
 
     Here are all Java controllers:
 
     {controllers_str}
 
-    Here are all HTML templates:
-
-    {templates_str}
-
-    === TASK 2: ADDITIONAL HTML PAGES (UI TESTS) ===
-
-    From the controllers and templates above, you MUST:
-
-    - Identify Spring MVC controller methods (typically in classes annotated with @Controller)
-      that:
-        - Use @GetMapping, @RequestMapping, etc.
-        - Return a String view name (e.g. "goodby", "followup", "pageX")
-        - Are NOT annotated with @ResponseBody and not part of a @RestController class.
-    - For each such method:
-        - Determine the path (e.g. "/goodby", "/followup") and the view name.
-        - Match the view name to a template file with the same or very similar name
-          (e.g. goodby.html for "goodby").
-        - Create a dedicated UI test in the SAME file (ui-hackathon2025.spec.ts).
-
-    For these additional page tests:
-
-    - Use test names like:
-        test('hackathon2025 UI: render goodby page', async ({{ page }}) => {{ ... }})
-    - Steps:
-        - await page.goto('http://localhost:8080<path>');
-        - Assert that the page loads without error.
-        - If the template clearly has a <title>, you may assert that the title
-          contains a relevant word (e.g. 'Hackathon' or part of the view title).
-        - Always assert that there is a main heading:
-            const heading = page.getByRole('heading', {{ level: 1 }});
-            await expect(heading).toBeVisible();
-          and, if the template shows a clear text (e.g. "Goodby Page"), assert
-          that heading contains that text (using contains, not exact equality).
-        - Assert that clearly visible key texts, buttons, or links exist,
-          based on the HTML template (use getByRole/getByText/locator).
-
-    IMPORTANT RULES for these UI page tests:
-
-    - DO NOT invent any routes like "/followup" if there is no corresponding
-      controller method and template.
-    - Only create tests for controller methods and views that are clearly present
-      in the provided controllers and templates.
-    - Only assert on <title> if the template clearly contains a <title> element.
-      Otherwise, skip title checks for that page.
-    - Prefer robust checks (contains, regex) over exact equality.
-
-    === TASK 3: API ENDPOINTS (REST TESTS) ===
-
-    From the controllers, also:
+    From these controllers, you must:
 
     - Identify all REST endpoints (methods annotated with @GetMapping, @PostMapping,
       @RequestMapping, etc.) whose path clearly starts with '/api/'.
@@ -279,7 +208,7 @@ def build_prompt(controllers, templates) -> str:
     - Use Playwright's APIRequestContext via the `request` fixture:
         test('...', async ({{ request }}) => {{ ... }})
     - For each /api/... endpoint:
-        - Perform a GET (or appropriate method) request to
+        - Perform a GET request (or the appropriate HTTP method) to
           'http://localhost:8080<path>'.
         - Assert that the status is 200.
         - Parse the JSON body.
@@ -307,6 +236,9 @@ def build_prompt(controllers, templates) -> str:
     """)
 
 
+# -------------------- main --------------------
+
+
 def main():
     # Skript liegt in scripts/, Repo-Root ist eine Ebene höher
     repo_root = pathlib.Path(__file__).resolve().parents[1]
@@ -315,41 +247,35 @@ def main():
     templates_dir = repo_root / "src/main/resources/templates"
 
     controllers = collect_controllers(controllers_dir)
-
-    # Alle Templates einsammeln
-    templates = []
-    for path in templates_dir.rglob("*.html"):
-        templates.append(path)
+    index_html = get_index_html(templates_dir)
 
     if not controllers:
         print(f"[WARN] Keine Controller unter {controllers_dir} gefunden.")
-    if not templates:
-        print(f"[WARN] Keine HTML-Templates unter {templates_dir} gefunden.")
+    if not index_html:
+        print(f"[WARN] Kein index.html unter {templates_dir} gefunden.")
 
-    # Du kannst hier deinen bestehenden Prompt-Aufbau verwenden
-    # und z.B. nur Index + APIs dem LLM überlassen.
-    prompt = build_prompt(controllers, templates)
+    prompt = build_prompt(controllers, index_html)
 
     print("[INFO] Rufe Azure OpenAI zur Generierung von Playwright-Tests auf...")
     completion = call_azure_openai_for_playwright(prompt)
-    base_ts = strip_code_fences(completion)
+    base_ts = strip_code_fences(completion).strip()
 
-    # --- Ab hier: generische UI-Tests für ALLE weiteren HTML-Seiten anhängen ---
-
+    # --- Generische UI-Tests für ALLE HTML-Templates anhängen ---
     extra_tests = []
 
-    for tpl in templates:
-        name = tpl.name  # z.B. "followup.html"
-        base = tpl.stem  # z.B. "followup"
+    if templates_dir.exists():
+        for tpl in templates_dir.rglob("*.html"):
+            name = tpl.name          # z.B. followup.html
+            base = tpl.stem          # z.B. followup
 
-        # index.html wird schon im ersten Test abgedeckt
-        if base.lower() in ("index", "home", "start"):
-            continue
+            # index.html ist schon im ersten Test abgedeckt
+            if base.lower() in ("index", "home", "start"):
+                continue
 
-        test_name = f"hackathon2025 UI: render {base} page"
-        url_path = f"/{base}"
+            test_name = f"hackathon2025 UI: render {base} page"
+            url_path = f"/{base}"
 
-        extra_ts = f"""
+            extra_ts = f"""
 test('{test_name}', async ({'{'} page {'}'}) => {{
   await page.goto('http://localhost:8080{url_path}');
   const heading = page.getByRole('heading', {{ level: 1 }});
@@ -357,9 +283,11 @@ test('{test_name}', async ({'{'} page {'}'}) => {{
 }});
 """.strip()
 
-        extra_tests.append(extra_ts)
+            extra_tests.append(extra_ts)
 
-    full_ts = base_ts.strip() + "\n\n" + "\n\n".join(extra_tests)
+    full_ts = base_ts
+    if extra_tests:
+        full_ts += "\n\n" + "\n\n".join(extra_tests)
 
     tests_dir = repo_root / "tests"
     tests_dir.mkdir(parents=True, exist_ok=True)
@@ -367,10 +295,6 @@ test('{test_name}', async ({'{'} page {'}'}) => {{
     target_path.write_text(full_ts, encoding="utf-8")
 
     print(f"[OK] Playwright UI-Test geschrieben (inkl. generischer HTML-Tests): {target_path}")
-
-
-if __name__ == "__main__":
-    main()
 
 
 if __name__ == "__main__":
