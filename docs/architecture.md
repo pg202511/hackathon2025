@@ -4,9 +4,7 @@
 -->
 
 java
-  @SpringBootApplication
-  public class Hackathon2025Application {
-      public static void main(String[] args) {
-          SpringApplication.run(Hackathon2025Application.class, args);
-      }
-  }
+@GetMapping("/api/hello")
+public Map<String,String> hello() {
+    return Map.of("message","Hello again and again from REST API for Hackathon 2025!");
+}
