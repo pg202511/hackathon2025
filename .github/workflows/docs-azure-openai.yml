@@ -63,8 +63,10 @@ jobs:
           echo "Committe folgende Änderungen:"
           echo "$CHANGES"
 
-          git fetch origin "${TARGET_BRANCH}"
-          git rebase "origin/${TARGET_BRANCH}" || true
+          # Kein rebase mehr:
+          # git fetch origin "${TARGET_BRANCH}"
+          # git rebase "origin/${TARGET_BRANCH}" || true
+
 
           git add docs
           git commit -m "chore: update AI-generated architecture docs (Azure OpenAI)" || {
