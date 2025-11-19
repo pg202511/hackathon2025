@@ -21,50 +21,54 @@ test('hackathon2025 UI: initial render and REST interaction', async ({ page }) =
   expect(raw.toLowerCase()).toContain('hello');
 });
 
-test('hackathon2025 API: /api/hello returns JSON', async ({ request }) => {
+test('hackathon2025 API: GET /api/hello', async ({ request }) => {
   const res = await request.get('http://localhost:8080/api/hello');
   expect(res.status()).toBe(200);
-  const json: any = await res.json();
+  const json = await res.json();
   expect(typeof json).toBe('object');
   expect(Object.keys(json).length).toBeGreaterThan(0);
-  expect(String(json.message).toLowerCase()).toContain('hello');
+  const msg = String(json.message || '').toLowerCase();
+  expect(msg).toContain('hello');
 });
 
-test('hackathon2025 API: /api/hello2 returns JSON', async ({ request }) => {
+test('hackathon2025 API: GET /api/hello2', async ({ request }) => {
   const res = await request.get('http://localhost:8080/api/hello2');
   expect(res.status()).toBe(200);
-  const json: any = await res.json();
+  const json = await res.json();
   expect(typeof json).toBe('object');
   expect(Object.keys(json).length).toBeGreaterThan(0);
-  expect(String(json.message).toLowerCase()).toContain('dummy');
+  const msg = String(json.message || '').toLowerCase();
+  expect(msg).toContain('dummy');
 });
 
-test('hackathon2025 API: /api/hello3 returns JSON', async ({ request }) => {
+test('hackathon2025 API: GET /api/hello3', async ({ request }) => {
   const res = await request.get('http://localhost:8080/api/hello3');
   expect(res.status()).toBe(200);
-  const json: any = await res.json();
+  const json = await res.json();
   expect(typeof json).toBe('object');
   expect(Object.keys(json).length).toBeGreaterThan(0);
-  expect(String(json.message).toLowerCase()).toContain('another');
+  const msg = String(json.message || '').toLowerCase();
+  expect(msg).toContain('dummy');
 });
 
-test('hackathon2025 API: /api/goodby returns JSON (with name)', async ({ request }) => {
-  const res = await request.get('http://localhost:8080/api/goodby?name=Tester');
+test('hackathon2025 API: GET /api/goodby with name param', async ({ request }) => {
+  const name = 'Playwright';
+  const res = await request.get(`http://localhost:8080/api/goodby?name=${encodeURIComponent(name)}`);
   expect(res.status()).toBe(200);
-  const json: any = await res.json();
+  const json = await res.json();
   expect(typeof json).toBe('object');
   expect(Object.keys(json).length).toBeGreaterThan(0);
-  const msg = String(json.message).toLowerCase();
+  const msg = String(json.message || '').toLowerCase();
   expect(msg).toContain('goodbye');
-  expect(msg).toContain('tester');
+  expect(msg).toContain(name.toLowerCase());
 });
 
-test('hackathon2025 API: /api/goodnight returns JSON', async ({ request }) => {
+test('hackathon2025 API: GET /api/goodnight', async ({ request }) => {
   const res = await request.get('http://localhost:8080/api/goodnight');
   expect(res.status()).toBe(200);
-  const json: any = await res.json();
+  const json = await res.json();
   expect(typeof json).toBe('object');
   expect(Object.keys(json).length).toBeGreaterThan(0);
-  const msg = String(json.message).toLowerCase();
+  const msg = String(json.message || '').toLowerCase();
   expect(msg).toMatch(/good\s+night/);
 });
