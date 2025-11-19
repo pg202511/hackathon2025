@@ -307,7 +307,7 @@ def build_prompt(controllers, templates) -> str:
     """)
 
 
-ef main():
+def main():
     # Skript liegt in scripts/, Repo-Root ist eine Ebene höher
     repo_root = pathlib.Path(__file__).resolve().parents[1]
 
