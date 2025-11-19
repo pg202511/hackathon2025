@@ -6,12 +6,14 @@ Erzeugt EIN Playwright-Testfile für:
 
 - Die Startseite (GET /, index.html) – UI-Test mit Button und REST-Aufruf
 - Alle REST-Endpoints unter /api/... – API-Tests via Playwright request
+- Zusätzliche HTML-Seiten, die über Spring MVC Controller gerendert werden
+  (z.B. Methoden mit @GetMapping("/foo") und Rückgabewert String "foo").
 
 Strenge Regeln:
-- Keine erfundenen Routen oder Seiten
+- KEINE erfundenen Routen oder Seiten
 - Nur Routen testen, die klar aus den Controllern hervorgehen
-- Nur Titel testen, wenn im Template explizit ein <title> steht
-- Keine verrückten String-Tricks wie .replace(' ', '') zum Vergleichen
+- Nur Titel testen, wenn im Template ein <title> steht
+- Keine fragilen String-Tricks wie .replace(' ', '') zum Vergleichen
 
 Erwartet Umgebungsvariablen:
 - AZURE_OPENAI_ENDPOINT
@@ -100,35 +102,60 @@ def collect_controllers(controllers_dir: pathlib.Path):
     return result
 
 
-def get_index_html(templates_dir: pathlib.Path) -> str:
+def collect_templates(templates_dir: pathlib.Path):
     """
-    Sucht index.html (oder ähnliches) und gibt den Inhalt zurück.
+    Sammelt alle .html-Templates.
+    Rückgabe: Liste von Dicts mit {name, path, code}.
     """
-    for path in templates_dir.rglob("index.html"):
-        return read_file(path)
-    # Fallback: irgendein Template
+    result = []
     for path in templates_dir.rglob("*.html"):
-        return read_file(path)
-    return ""
+        code = read_file(path)
+        result.append(
+            {
+                "name": path.name,
+                "path": str(path),
+                "code": code,
+            }
+        )
+    return result
 
 
-def build_prompt(controllers, index_html: str) -> str:
+def get_index_html(templates) -> str:
+    """
+    Sucht index.html in der Templates-Liste.
+    """
+    for t in templates:
+        if t["name"].lower().startswith("index."):
+            return t["code"]
+    return templates[0]["code"] if templates else ""
+
+
+def build_prompt(controllers, templates) -> str:
     controllers_str = ""
     for c in controllers:
         controllers_str += f"\nController {c['name']} (Pfad: {c['path']}):\n```java\n{c['code']}\n```\n"
+
+    templates_str = ""
+    for t in templates:
+        templates_str += f"\nTemplate {t['name']} (Pfad: {t['path']}):\n```html\n{t['code']}\n```\n"
+
+    index_html = get_index_html(templates)
 
     return textwrap.dedent(f"""
     We are working on a Spring Boot demo app called "hackathon2025".
     It runs on http://localhost:8080.
 
-    There is an index page (GET /) rendered via a Thymeleaf template, and there are
-    REST endpoints implemented in Spring controllers, especially under /api/... paths.
+    There is an index page (GET /) rendered via a Thymeleaf template, one or more
+    additional HTML pages, and several REST endpoints implemented in Spring
+    controllers (especially under /api/... paths).
 
     Your job is to generate ONE Playwright test file in TypeScript named
     `ui-hackathon2025.spec.ts` that contains:
 
     1) A UI test for the index page (GET /)
-    2) API tests for all REST endpoints whose path clearly starts with /api/
+    2) UI tests for additional HTML pages rendered by Spring MVC controllers
+       (non-REST controllers that return view names as String)
+    3) API tests for all REST endpoints whose path clearly starts with /api/
        and that return JSON.
 
     === INDEX PAGE BEHAVIOR (MUST BE STABLE) ===
@@ -186,32 +213,80 @@ def build_prompt(controllers, index_html: str) -> str:
 
     Only adapt selectors or expected texts IF the provided HTML has clearly changed.
 
-    === CONTROLLERS AND REST ENDPOINTS ===
+    === CONTROLLERS AND TEMPLATES (FULL CONTEXT) ===
 
     Here are all Java controllers:
 
     {controllers_str}
 
-    From these controllers, you must:
+    Here are all HTML templates:
 
-    - Identify all REST endpoints (e.g. methods annotated with @GetMapping, @PostMapping, @RequestMapping)
-      whose path clearly starts with '/api/'.
-    - For each such endpoint that returns JSON, create a dedicated API test in the SAME file
-      (ui-hackathon2025.spec.ts).
+    {templates_str}
+
+    === TASK 2: ADDITIONAL HTML PAGES (UI TESTS) ===
+
+    From the controllers and templates above, you MUST:
+
+    - Identify Spring MVC controller methods (typically in classes annotated with @Controller)
+      that:
+        - Use @GetMapping, @RequestMapping, etc.
+        - Return a String view name (e.g. "goodby", "followup", "pageX")
+        - Are NOT annotated with @ResponseBody and not part of a @RestController class.
+    - For each such method:
+        - Determine the path (e.g. "/goodby", "/followup") and the view name.
+        - Match the view name to a template file with the same or very similar name
+          (e.g. goodby.html for "goodby").
+        - Create a dedicated UI test in the SAME file (ui-hackathon2025.spec.ts).
+
+    For these additional page tests:
+
+    - Use test names like:
+        test('hackathon2025 UI: render goodby page', async ({{ page }}) => {{ ... }})
+    - Steps:
+        - await page.goto('http://localhost:8080<path>');
+        - Assert that the page loads without error.
+        - If the template clearly has a <title>, you may assert that the title
+          contains a relevant word (e.g. 'Hackathon' or part of the view title).
+        - Always assert that there is a main heading:
+            const heading = page.getByRole('heading', {{ level: 1 }});
+            await expect(heading).toBeVisible();
+          and, if the template shows a clear text (e.g. "Goodby Page"), assert
+          that heading contains that text (using contains, not exact equality).
+        - Assert that clearly visible key texts, buttons, or links exist,
+          based on the HTML template (use getByRole/getByText/locator).
+
+    IMPORTANT RULES for these UI page tests:
+
+    - DO NOT invent any routes like "/followup" if there is no corresponding
+      controller method and template.
+    - Only create tests for controller methods and views that are clearly present
+      in the provided controllers and templates.
+    - Only assert on <title> if the template clearly contains a <title> element.
+      Otherwise, skip title checks for that page.
+    - Prefer robust checks (contains, regex) over exact equality.
+
+    === TASK 3: API ENDPOINTS (REST TESTS) ===
+
+    From the controllers, also:
+
+    - Identify all REST endpoints (methods annotated with @GetMapping, @PostMapping,
+      @RequestMapping, etc.) whose path clearly starts with '/api/'.
+    - For each such endpoint that returns JSON, create a dedicated API test in
+      the SAME file (ui-hackathon2025.spec.ts).
 
     For API tests:
 
     - Use Playwright's APIRequestContext via the `request` fixture:
         test('...', async ({{ request }}) => {{ ... }})
     - For each /api/... endpoint:
-        - Perform a GET request (or the appropriate HTTP method) to
+        - Perform a GET (or appropriate method) request to
           'http://localhost:8080<path>'.
         - Assert that the status is 200.
         - Parse the JSON body.
         - Assert that the parsed value is an object and has at least one field.
         - If the controller clearly uses a hard-coded message like
           "Hello from rest api for hackathon 2025!!!", you may:
-            - assert that `String(message).toLowerCase()` contains 'hello'
+            - assert that `String(message).toLowerCase()` contains 'hello'.
         - If the controller clearly uses a message like
           "good night from rest api for hackathon 2025!!!", you may:
             - assert that `String(message).toLowerCase()` matches `/good\\s+night/`.
@@ -219,17 +294,10 @@ def build_prompt(controllers, index_html: str) -> str:
         - DO NOT assert on exact full strings unless absolutely necessary.
           Prefer robust checks (contains, regex with optional whitespace).
 
-    Very important RULES:
+    GLOBAL RULES:
 
-    - DO NOT invent any endpoints or routes.
-      If there is no controller method annotated with a given path, IGNORE it.
-    - DO NOT invent any pages like "/followup" or titles like "Followup Demo"
-      if they are not clearly present in the controllers and templates.
-    - Only assert on <title> if the template clearly contains a <title> element.
-      Otherwise, skip title checks for that page.
-    - Keep test names descriptive but simple, e.g.:
-        test('hackathon2025 API: /api/hello returns JSON', ...)
-        test('hackathon2025 API: /api/goodbye returns JSON', ...)
+    - DO NOT invent any endpoints or routes. If there is no controller method for a path,
+      IGNORE it completely.
     - All tests must be in a single file:
         ui-hackathon2025.spec.ts
     - Use:
@@ -247,14 +315,14 @@ def main():
     templates_dir = repo_root / "src/main/resources/templates"
 
     controllers = collect_controllers(controllers_dir)
-    index_html = get_index_html(templates_dir)
+    templates = collect_templates(templates_dir)
 
     if not controllers:
         print(f"[WARN] Keine Controller unter {controllers_dir} gefunden.")
-    if not index_html:
-        print(f"[WARN] Kein index.html unter {templates_dir} gefunden.")
+    if not templates:
+        print(f"[WARN] Keine HTML-Templates unter {templates_dir} gefunden.")
 
-    prompt = build_prompt(controllers, index_html)
+    prompt = build_prompt(controllers, templates)
 
     print("[INFO] Rufe Azure OpenAI zur Generierung von Playwright-Tests auf...")
     completion = call_azure_openai_for_playwright(prompt)
