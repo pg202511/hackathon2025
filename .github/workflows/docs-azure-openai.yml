@@ -1,4 +1,4 @@
-name: Java CI mit Azure OpenAI Testgenerierung
+name: Generate Architecture Docs with Azure OpenAI
 
 on:
   pull_request:
@@ -9,13 +9,10 @@ permissions:
   pull-requests: write
 
 jobs:
-  generate-and-test:
+  generate-docs:
     runs-on: ubuntu-latest
 
     env:
-      SOURCE_DIR: src/main/java
-      TEST_DIR: src/test/java
-
       AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
       AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
       AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
@@ -37,55 +34,29 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-          cache: 'maven'
-
-      # 1) Tests generieren
-      - name: Generate/Update Unit Tests with Azure OpenAI
+      - name: Generate architecture documentation with Azure OpenAI
         run: |
-          python scripts/generate_tests_with_azure_openai.py \
-            --source-dir "$SOURCE_DIR" \
-            --test-dir "$TEST_DIR"
+          python scripts/generate_docs_with_azure_openai.py
 
-      - name: Show generated test changes
+      - name: Show doc changes
         run: |
-          echo "Änderungen an Testdateien:"
+          echo "Änderungen an der Dokumentation:"
           git status
           git diff --stat || true
 
-      # 2) Build & Tests
-      - name: Build & Run Tests (mvn verify)
-        run: |
-          mvn -B -ntp clean verify
-
-      - name: Upload JUnit & JaCoCo reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-reports
-          path: |
-            **/target/surefire-reports/*.xml
-            **/target/site/jacoco/
-
-      # 3) Änderungen an Tests committen & zurück pushen (nur im PR-Branch)
-      - name: Commit & push generated tests
+      - name: Commit & push generated docs
         if: >
           success() &&
           github.event.pull_request.head.repo.full_name == github.repository
         env:
           TARGET_BRANCH: ${{ github.head_ref }}
-          TEST_DIR: ${{ env.TEST_DIR }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          CHANGES=$(git status --porcelain "${TEST_DIR}" || true)
+          CHANGES=$(git status --porcelain "docs" || true)
           if [ -z "$CHANGES" ]; then
-            echo "Keine neuen oder geänderten Testdateien. Kein Commit nötig."
+            echo "Keine neuen oder geänderten Doku-Dateien. Kein Commit nötig."
             exit 0
           fi
 
@@ -95,15 +66,16 @@ jobs:
           # Kein rebase mehr:
           # git fetch origin "${TARGET_BRANCH}"
           # git rebase "origin/${TARGET_BRANCH}" || true
-          
-          git add "${TEST_DIR}"
-          git commit -m "chore: add AI-generated unit tests via Azure OpenAI" || {
+
+
+          git add docs
+          git commit -m "chore: update AI-generated architecture docs (Azure OpenAI)" || {
             echo "Nichts zu committen (evtl. identischer Inhalt)."
             exit 0
           }
 
           echo "Pushe auf PR-Branch: ${TARGET_BRANCH}"
           git push --force-with-lease origin HEAD:"${TARGET_BRANCH}" || {
-            echo "Warnung: Push ist fehlgeschlagen (Race Condition o.ä.). Auto-Update der Tests für diesen Run übersprungen."
+            echo "Warnung: Push ist fehlgeschlagen (Race Condition o.ä.). Auto-Update der Doku wurde für diesen Run übersprungen."
             exit 0
           }
