@@ -307,7 +307,7 @@ def build_prompt(controllers, templates) -> str:
     """)
 
 
-def main():
+ef main():
     # Skript liegt in scripts/, Repo-Root ist eine Ebene höher
     repo_root = pathlib.Path(__file__).resolve().parents[1]
 
@@ -315,25 +315,62 @@ def main():
     templates_dir = repo_root / "src/main/resources/templates"
 
     controllers = collect_controllers(controllers_dir)
-    templates = collect_templates(templates_dir)
+
+    # Alle Templates einsammeln
+    templates = []
+    for path in templates_dir.rglob("*.html"):
+        templates.append(path)
 
     if not controllers:
         print(f"[WARN] Keine Controller unter {controllers_dir} gefunden.")
     if not templates:
         print(f"[WARN] Keine HTML-Templates unter {templates_dir} gefunden.")
 
+    # Du kannst hier deinen bestehenden Prompt-Aufbau verwenden
+    # und z.B. nur Index + APIs dem LLM überlassen.
     prompt = build_prompt(controllers, templates)
 
     print("[INFO] Rufe Azure OpenAI zur Generierung von Playwright-Tests auf...")
     completion = call_azure_openai_for_playwright(prompt)
-    ts_code = strip_code_fences(completion)
+    base_ts = strip_code_fences(completion)
+
+    # --- Ab hier: generische UI-Tests für ALLE weiteren HTML-Seiten anhängen ---
+
+    extra_tests = []
+
+    for tpl in templates:
+        name = tpl.name  # z.B. "followup.html"
+        base = tpl.stem  # z.B. "followup"
+
+        # index.html wird schon im ersten Test abgedeckt
+        if base.lower() in ("index", "home", "start"):
+            continue
+
+        test_name = f"hackathon2025 UI: render {base} page"
+        url_path = f"/{base}"
+
+        extra_ts = f"""
+test('{test_name}', async ({'{'} page {'}'}) => {{
+  await page.goto('http://localhost:8080{url_path}');
+  const heading = page.getByRole('heading', {{ level: 1 }});
+  await expect(heading).toBeVisible();
+}});
+""".strip()
+
+        extra_tests.append(extra_ts)
+
+    full_ts = base_ts.strip() + "\n\n" + "\n\n".join(extra_tests)
 
     tests_dir = repo_root / "tests"
     tests_dir.mkdir(parents=True, exist_ok=True)
     target_path = tests_dir / "ui-hackathon2025.spec.ts"
-    target_path.write_text(ts_code, encoding="utf-8")
+    target_path.write_text(full_ts, encoding="utf-8")
 
-    print(f"[OK] Playwright UI-Test geschrieben: {target_path}")
+    print(f"[OK] Playwright UI-Test geschrieben (inkl. generischer HTML-Tests): {target_path}")
+
+
+if __name__ == "__main__":
+    main()
 
 
 if __name__ == "__main__":
