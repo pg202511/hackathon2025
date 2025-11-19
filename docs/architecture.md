@@ -5,159 +5,150 @@
 
 # Architecture and Technical Overview — hackathon2025
 
-This document describes the architecture, components, and operational practices of the hackathon2025 demo Spring Boot application. It is intended to help new developers understand how the project is structured, how requests flow through the system, what the UI does, how tests are organized, and what CI/CD/AI-assisted workflows exist. This document was produced by an AI-assisted workflow and should be reviewed and refined by humans (see CI/CD section).
+This document describes the structure, responsibilities, and runtime behavior of the hackathon2025 demo Spring Boot application. It is intended to help new developers quickly understand the codebase, how the pieces interact, what is covered by tests, and what reasonable next steps are.
+
+Important note: this document was produced by an AI-assisted workflow and should be reviewed and adjusted by project maintainers for accuracy and style.
 
 ## 1. Introduction
 
 What the application does
-- hackathon2025 is a small demo web application that exposes a few REST endpoints and a minimal web UI rendered with Thymeleaf.
-- It demonstrates:
-  - Serving an index page ("/") with a JavaScript button that calls a REST endpoint.
-  - A followup UI page (templates/followup.html) that exercises multiple REST endpoints, including one that accepts a query parameter.
-  - A set of simple REST endpoints that return JSON messages (used by the UI and tests).
+- hackathon2025 is a small demo web application that exposes several REST endpoints and a simple Thymeleaf-based UI.
+- The UI contains two HTML templates:
+  - index.html — a landing page with a "Test REST" button that calls the `/api/hello` endpoint.
+  - followup.html — a more interactive page providing buttons to call several REST endpoints (hello/hello2/hello3, goodby, goodnight).
+- REST endpoints return JSON maps with small text messages or computed values (the Fibonacci endpoint).
 
 Main technologies
-- Java (Spring Boot)
-- Spring MVC (REST controllers and Thymeleaf MVC controller)
-- Thymeleaf templates for server-side HTML rendering
-- REST APIs returning JSON (Map<String, String> serialized by Spring)
-- Playwright for UI/API end-to-end tests (project contains Playwright test activities as part of CI)
-- JUnit for unit tests
-- Azure OpenAI is used in automated workflows to generate/update tests and documentation (see CI/CD section)
-
-Assumption: CI workflows and AI-assisted test generation are referenced in the repository's automation; this document summarizes their intended behavior per the repository's conventions and the project description.
+- Java 11+ (standard Spring Boot Java application).
+- Spring Boot (spring-boot-starter-web and spring-boot-starter-thymeleaf implied).
+- Thymeleaf for server-side HTML templating.
+- Browser-side JavaScript uses fetch() to call REST endpoints.
+- CI/CD and test generation workflows use Azure OpenAI to generate tests (unit and Playwright UI/API tests) and GitHub Actions to run them (see CI/CD section).
 
 ## 2. Architecture Overview
 
 High-level architecture
-- Single Spring Boot application that auto-detects components via @SpringBootApplication.
-- Two layers are visible:
-  - Web/UI layer: Thymeleaf templates served by a controller (WebController).
-  - API layer: REST controllers returning JSON (HelloRestController, GoodbyRestController).
-- No database or persistent storage is present — this is a stateless demo that returns static/dynamic JSON messages.
+- Single Spring Boot application containing:
+  - REST controllers that expose /api/** endpoints.
+  - A Web controller that returns Thymeleaf templates for UI pages.
+  - Server-side templates under `resources/templates` (index.html, followup.html).
+- No persistence layer, no database, and no external services are used in the current codebase — it is a self-contained demo.
 
 How the main application class wires things together
-- The entry point is Hackathon2025Application.java annotated with @SpringBootApplication; this triggers component scanning and auto-configuration.
-- Controllers are simple Spring components (@Controller and @RestController) and are auto-wired by Spring without additional configuration.
+- The entry point is Hackathon2025Application annotated with @SpringBootApplication and a standard SpringApplication.run(...). Component scanning picks up controllers and Thymeleaf auto-configuration to serve templates.
 
-Request flow (end-to-end)
-- Browser → HTTP GET "/" → WebController#index → returns "index" view name → Thymeleaf renders templates/index.html with model attributes (title).
-- Browser → JavaScript fetch → GET "/api/hello" (or other /api/* endpoints) → corresponding @RestController method produces Map<String,String> → Spring converts it to JSON and returns in the HTTP response → JavaScript processes the JSON and updates the DOM.
+Request flow (typical)
+- Browser → HTTP GET / → WebController#index returns the "index" view name → Thymeleaf renders `index.html` with model attributes.
+- Browser-side JavaScript uses fetch() to call REST endpoints (e.g., GET /api/hello).
+- Spring MVC dispatches fetch request to the matching @RestController method which returns a Map<String,?>. Spring Boot automatically converts the Map to JSON in the response.
 
 ## 3. Components and Responsibilities
 
-Main Java classes
+Main classes (controllers)
 - Hackathon2025Application
-  - Spring Boot entry point. Starts the embedded server and loads configuration.
+  - Application bootstrap class — starts the Spring context.
 - WebController
-  - Annotated with @Controller.
-  - Handles GET "/" and adds "title" to the model; returns the "index" template.
+  - A @Controller that maps GET "/" and adds a model attribute `title` = "Hackathon 2025 Demo", then returns "index".
 - HelloRestController
-  - Annotated with @RestController.
-  - GET /api/hello → returns { "message": "Hello again and again from REST API for Hackathon 2025!" }
-  - GET /api/hello2 → returns a dummy message for hello2
-  - GET /api/hello3 → returns a dummy message for hello3
+  - @RestController exposing:
+    - GET /api/hello → Map with message "Hello again and again from REST API for Hackathon 2025!"
+    - GET /api/hello2 → Map with message "Dummy text for hello2"
+    - GET /api/hello3 → Map with message "Another dummy text for hello3"
 - GoodbyRestController
-  - Annotated with @RestController.
-  - GET /api/goodby?name={name} → returns a message "Goodbye, {name}, from REST API for Hackathon 2025!!!!"
-    - Query parameter "name" has defaultValue "Gast" when absent.
-  - GET /api/goodnight → returns a good night message
+  - @RestController exposing:
+    - GET /api/goodby?name=... → Map with message "Goodbye, <name>, from REST API for Hackathon 2025!!!!"
+      - default name = "Gast"
+    - GET /api/goodnight → Map with message "Good night from REST API for Hackathon 2025!!!"
+- FibonacciRestController
+  - @RestController exposing:
+    - GET /api/fibonacci?number=N → returns a Map with the original `number` and a `fibonacci` value (computed iteratively).
+    - If `number < 0` the controller returns Map with an `"error"` key and a German error message: "Die Zahl muss >= 0 sein."
 
-Overview of REST endpoints (paths and responses)
-- GET /api/hello
-  - Response: JSON { "message": "Hello again and again from REST API for Hackathon 2025!" }
-- GET /api/hello2
-  - Response: JSON { "message": "Dummy text for hello2" }
-- GET /api/hello3
-  - Response: JSON { "message": "Another dummy text for hello3" }
-- GET /api/goodby?name=...
-  - Response: JSON { "message": "Goodbye, {name}, from REST API for Hackathon 2025!!!!" }
-  - Query param: name (defaults to "Gast")
-- GET /api/goodnight
-  - Response: JSON { "message": "Good night from REST API for Hackathon 2025!!!" }
+Notes on responsibilities
+- Controllers return simple Map instances; there are no DTO classes, service layers, or repositories.
+- Fibonacci calculation uses an iterative approach (loop from 2 to n) to compute the nth Fibonacci number.
 
-Overview of HTML pages and purpose
-- templates/index.html
-  - Simple landing page served at "/".
-  - Shows the title (from model attribute "title") and a button "Test REST" that triggers JS to call /api/hello and display the returned JSON in the page.
-- templates/followup.html
-  - A more comprehensive manual test / demo page that includes buttons to call /api/hello, /api/hello2, /api/hello3 and /api/goodby (with input) and /api/goodnight.
-  - Each button triggers a client-side fetch and places the JSON result into an element on the page for inspection.
+REST endpoints summary
+- /api/hello, /api/hello2, /api/hello3 — simple message responses.
+- /api/goodby — accepts query param `name` (defaults to "Gast") and returns a custom message.
+- /api/goodnight — simple goodnight message.
+- /api/fibonacci — accepts query param `number` (default 0), returns computed Fibonacci number or an error.
+
+HTML templates overview
+- index.html
+  - Displays the title (injected from the model).
+  - Has a "Test REST" button that triggers a client-side fetch to `/api/hello` and writes the JSON result into the page.
+- followup.html
+  - Contains multiple buttons and inputs to exercise `/api/hello*`, `/api/goodby`, `/api/goodnight`.
+  - Results are displayed in <p> tags by updating innerText with the returned JSON string.
+
+Important implementation detail (assumption)
+- The repository contains `followup.html` under templates, but the only explicit WebController mapping in the provided code is for "/", which returns "index". There is no controller method mapping to render `followup.html` in the shown code. It may be intended to be served via an additional controller or a direct route (not present). This is an explicit assumption to highlight.
 
 ## 4. UI and REST Interaction
 
 Index page behavior
-- The index page renders the title provided by WebController.
-- The page includes a JavaScript function callApi() that does:
-  - fetch('/api/hello')
-  - parse the JSON response
-  - write the JSON (stringified) into the element with id "apiResult"
-- Example of the client-side fetch used on index:
-  - async function callApi() { const res = await fetch('/api/hello'); const j = await res.json(); ... }
+- Button labeled "Test REST" invokes client-side JavaScript function `callApi()`.
+- callApi() does:
+  - fetch('/api/hello') → await response → parse JSON → write JSON.stringify(result) to element id `apiResult`.
+- Example of returned payload from GET /api/hello:
+  - { "message": "Hello again and again from REST API for Hackathon 2025!" }
 
 Followup page behavior
-- followup.html exposes buttons for each API endpoint and a text input for the /api/goodby call.
-- Each button calls an async function such as callHello(), callHello2(), callHello3() which fetch the corresponding endpoint and display the results.
-- callGoodby() reads the value from the input field, encodes it, and calls /api/goodby?name=... to include the user-provided name.
+- Buttons each call functions that fetch the corresponding REST endpoints.
+- For /api/goodby, the page reads the content of input `goodbyInput` and attaches it as query parameter `name`.
+- Returned JSON is displayed as a raw string in the page (no client-side validation/formatting beyond JSON.stringify).
 
-How UI interacts with REST controllers
-- The UI performs client-side HTTP GET requests (fetch) to the REST endpoints. The controllers return Map<String,String> values that Spring serializes into JSON.
-- No CSRF tokens, authentication, or form POSTs are used — the interaction is simple GET-based demo traffic.
+How UI interacts with controllers
+- All UI-to-server interactions are via standard HTTP GET requests implemented using fetch().
+- Responses are plain JSON produced by Spring Boot's message converters from Java Maps.
+- No CSRF tokens, authentication, or complex headers are used in the demos.
 
 ## 5. Testing Strategy
 
-Unit and integration tests
-- The project uses JUnit for unit tests (standard approach in Spring Boot projects).
-- Some unit tests in the repository are generated with the help of Azure OpenAI in automated workflows (per project automation). These focus on verifying controller responses and simple wiring.
+What tests are present (project-level strategy)
+- Unit tests:
+  - Java unit tests use JUnit (typical for Spring Boot projects). Some unit tests are generated/updated by an Azure OpenAI-assisted workflow.
+  - Unit tests typically assert controller behavior: expected JSON structure and values, default parameter handling, and error return for invalid inputs (e.g., negative Fibonacci).
+- Playwright UI/API tests:
+  - Browser-based automated tests simulate user interactions: loading pages, clicking "Test REST", filling the name input and pressing goodby buttons, and verifying that the UI updates with expected JSON responses.
+  - Playwright tests are also generated/updated by Azure OpenAI workflows to cover the interactive flows.
+- Coverage focus:
+  - Key behaviors are covered: hello endpoints, goodby parameter default and interpolation, fibonacci calculation for valid and invalid inputs, and the primary UI flows that call these endpoints.
 
-UI and API tests with Playwright
-- Playwright is used for end-to-end browser and API testing. Playwright scripts exercise the UI buttons (index and followup) and verify that the expected JSON is shown on the page.
-- Playwright can also be used to call the REST endpoints directly and assert the JSON responses.
-
-What is covered (high-level)
-- Controller endpoints return expected JSON structure and content.
-- UI behavior: clicking "Test REST" triggers a fetch and displays the response.
-- followup.html demonstrates more flows (including query parameter handling).
-- The tests exercise the demo contract (endpoints and UI) rather than complex business logic.
-
-Note: This summary is based on the existing controllers/templates. Exact test names and assertions may vary; generated tests aim to cover the above interactions.
+Note: The tests are generated by a GitHub Actions workflow (see next section) — generated tests are intended as a starting point and must be reviewed by developers.
 
 ## 6. CI/CD and AI-Assisted Workflows
 
-GitHub Actions workflows (project conventions)
-- The repository contains GitHub Actions that:
-  - generate or update JUnit tests for Java code using Azure OpenAI,
-  - generate or update Playwright UI/API tests using Azure OpenAI,
-  - generate or refresh architecture/documentation files (including this file),
-  - run Maven build and tests and execute Playwright tests as part of CI.
-- Generated artifacts (tests, docs) are committed back to the pull request branch, not directly to main. This enables human review of generated changes before merging.
+GitHub Actions workflows in this repository perform the following (project policy / existing pipelines):
+- Generate or update unit tests for Java controllers using Azure OpenAI (automated test generation).
+- Generate or update Playwright UI/API tests using Azure OpenAI.
+- Generate or update this architecture document (docs/architecture.md) using an AI workflow.
+- Run Maven build and JUnit tests in CI.
+- Run Playwright tests in a CI job that sets up a browser environment.
+- When tests or docs are generated/updated, the workflow commits the generated artifacts back to the pull request branch (not directly to main). This keeps changes visible in PRs for human review.
 
-Important note: This architecture document itself was produced by an AI-assisted workflow and should be reviewed and refined by humans. Automated test generation accelerates coverage but must be validated for correctness, reliability, and security.
-
-Assumption: The repository’s workflows are configured to run Playwright and Maven in CI and to use Azure OpenAI for generation tasks as described.
+Important: this architecture document itself was produced by an AI-assisted generation step in the CI flow — it should be reviewed and refined by humans before being accepted.
 
 ## 7. Limitations and Next Steps
 
-Current limitations
-- No persistence layer: there is no database or repository abstraction — controllers return static or simple dynamic text.
-- No service layer: controller logic is directly in controllers; this limits separation of concerns.
-- Minimal input validation and error handling: e.g., /api/goodby relies on a simple query parameter and does not validate inputs.
-- No security: no authentication/authorization or CSRF protection is present (suitable for a demo but not production).
-- Limited configuration and observability: no centralized config profiles, metrics, or structured logging beyond default behavior.
+Current limitations (observed from the code)
+- Very small, demo-oriented codebase:
+  - No service layer (business logic is in controllers).
+  - No DTOs or validation framework (relying on default Spring parameter binding).
+  - No persistence or configuration for storage.
+  - No structured error responses / HTTP status codes beyond the default behavior.
+  - followup.html exists but no explicit controller mapping in shown code (assumption noted above).
+- Security is absent: no authentication, authorization or CSRF protections for interactive pages.
+- No API documentation (OpenAPI/Swagger) or versioning.
 
 Suggested next steps
-- Introduce a service layer (e.g., HelloService, GoodbyService) to decouple controller logic and make unit testing easier.
-- Add DTOs and response models instead of Map<String,String> for clearer schemas.
-- Add input validation (Spring @Valid, DTO constraints) and consistent error handling (ControllerAdvice).
-- Add tests for negative/error cases and edge conditions.
-- Add logging and metrics, and externalize messages/configuration to properties.
-- If persistence is required, add Spring Data repositories and an embedded DB for integration tests.
-- Harden CI: add dependency scanning, static analysis, and review rules for AI-generated commits.
+- Add a service layer (e.g., FibonacciService, GreetingService) to move business logic out of controllers for testability and maintainability.
+- Replace raw Map responses with DTO classes and explicit response types; use ResponseEntity to control HTTP status codes.
+- Add validation (Spring Validation) for inputs and centralized exception handling (ControllerAdvice).
+- Add API documentation (Springdoc/OpenAPI) and contract tests for the public API.
+- Introduce automated integration tests and expand Playwright coverage to validate edge cases and error responses.
+- Add logging, structured metrics, and basic security (e.g., OAuth2 or at least basic auth) if the app is extended beyond a demo.
+- If followup.html should be reachable, add a controller mapping or navigation link from index to followup.
 
-Appendix — small code references
-- Entry point:
-  - @SpringBootApplication public class Hackathon2025Application { public static void main(String[] args) { SpringApplication.run(...); } }
-- Example REST mapping:
-  - @GetMapping("/api/hello") public Map<String,String> hello() { return Map.of("message","Hello..."); }
-
-If you have questions about any controller, test, or the CI configuration files, point me to the specific file(s) and I will expand or refine this document.
+If you have questions about any specific file or want a checklist to onboard a new contributor (run, build, test), I can produce it as a follow-up.
