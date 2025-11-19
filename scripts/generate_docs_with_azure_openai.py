@@ -9,10 +9,11 @@ Inhaltlich soll die Dokumentation u.a. abdecken:
 - Überblick (Zweck der Anwendung)
 - Architektur (Backend, UI, REST-APIs)
 - Wichtige Klassen (Controller, Application)
-- Wichtige Endpunkte (/api/...)
-- UI-Struktur (Thymeleaf-Templates)
+- Wichtige Endpunkte (/api/…)
+- Wichtige HTML-Templates (index.html, followup.html, …)
 - Teststrategie (JUnit, Playwright, AI-generierte Tests)
 - CI/CD-Workflows (GitHub Actions + Azure OpenAI)
+- Limitierungen & mögliche nächste Schritte
 
 Erwartet Umgebungsvariablen:
 - AZURE_OPENAI_ENDPOINT
@@ -25,11 +26,14 @@ import pathlib
 import textwrap
 import json
 import re
-import requests
 from typing import List, Dict
+
+import requests
 
 API_VERSION = "2024-02-15-preview"  # ggf. anpassen
 
+
+# ---------- Hilfsfunktionen ----------
 
 def read_file(path: pathlib.Path) -> str:
     if not path.exists():
@@ -90,11 +94,12 @@ def call_azure_openai(prompt: str) -> str:
 
     system_prompt = (
         "You are a senior software architect. "
-        "You create concise but clear technical and architectural documentation "
-        "for Java/Spring Boot web applications with REST APIs and simple UIs. "
-        "You write in Markdown, with headings, bullet lists, and code blocks where useful. "
+        "You create clear, structured, multi-section technical and architectural documentation "
+        "for Java/Spring Boot web applications with REST APIs and HTML/Thymeleaf UIs. "
+        "You always write a complete Markdown document with headings and narrative text, "
+        "not just a short code snippet. "
         "You do NOT invent features that are not visible in the code. "
-        "If something is unclear, you describe it carefully as an assumption."
+        "If something is unclear, you clearly mark it as an assumption."
     )
 
     body = {
@@ -102,10 +107,10 @@ def call_azure_openai(prompt: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ]
-        # kein max_tokens / keine temperature -> Azure-kompatibel
+        # keine max_tokens / temperature -> Azure-kompatibel
     }
 
-    resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=120)
+    resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=180)
     if resp.status_code >= 400:
         raise RuntimeError(f"Azure OpenAI Fehler {resp.status_code}: {resp.text}")
     data = resp.json()
@@ -120,99 +125,108 @@ def strip_markdown_fences(text: str) -> str:
     return text.strip()
 
 
-def build_prompt(java_files, templates) -> str:
-    # Begrenze Kontext etwas, um nicht alles 1:1 reinzuschütten
-    # (für Hackathongröße reicht das grob)
-    def shorten(code: str, max_lines: int = 200) -> str:
-        lines = code.splitlines()
-        if len(lines) <= max_lines:
-            return code
-        return "\n".join(lines[:max_lines]) + "\n// ... truncated ..."
+def shorten_code(code: str, max_lines: int = 200) -> str:
+    lines = code.splitlines()
+    if len(lines) <= max_lines:
+        return code
+    return "\n".join(lines[:max_lines]) + "\n// ... truncated ..."
 
+
+def build_prompt(java_files, templates) -> str:
     java_snippets = []
     for jf in java_files:
         java_snippets.append(
-            f"Datei: {jf['path']}\n```java\n{shorten(jf['code'])}\n```"
+            f"File: {jf['path']}\n```java\n{shorten_code(jf['code'])}\n```"
         )
 
     template_snippets = []
     for t in templates:
         template_snippets.append(
-            f"Template: {t['path']}\n```html\n{shorten(t['code'], max_lines=120)}\n```"
+            f"Template: {t['path']}\n```html\n{shorten_code(t['code'], max_lines=120)}\n```"
         )
 
     java_block = "\n\n".join(java_snippets)
     tmpl_block = "\n\n".join(template_snippets)
 
     return textwrap.dedent(f"""
-    Please create a technical and architectural documentation in **Markdown** for the
-    following Java/Spring Boot demo project "hackathon2025".
+    Please create a **comprehensive technical and architectural documentation** in **Markdown**
+    for the following Java/Spring Boot demo project called `hackathon2025`.
 
-    The documentation will live in the repository as `docs/architecture.md` and should be
-    understandable for other developers joining the project.
+    The documentation will be stored as `docs/architecture.md` in the repository and should
+    be understandable for new developers joining the project.
 
-    ### Style & Tone
+    ### Very important output requirements
 
-    - Write in English.
-    - Use Markdown headings (##, ###, etc).
-    - Be concise but clear.
-    - Prefer bullet lists for enumerations.
-    - Include small code blocks where it helps (but do not paste full files).
-    - Add a short note at the top that this document is AI-assisted and should be reviewed.
+    - Output **one complete Markdown document**.
+    - Do **not** just output a short code snippet.
+    - Do **not** simply repeat the full source code.
+    - Use headings (`#`, `##`, `###`) and paragraphs.
+    - Use bullet lists where appropriate.
+    - Include **short** code examples only where they help explain something.
+    - Aim for roughly **800–1500 words** (not a one-liner).
 
     ### Mandatory Sections
 
-    Please include at least the following sections:
+    Please include at least the following sections (as Markdown headings):
 
     1. Introduction
        - What the application does (based purely on the code and HTML templates).
-       - Main technologies (Spring Boot, Java, Thymeleaf, REST APIs, etc.).
+       - Main technologies (Spring Boot, Java, Thymeleaf, REST APIs, Playwright, etc.).
 
     2. Architecture Overview
-       - High-level architecture (Backend, Controllers, REST APIs, UI templates).
+       - High-level architecture (backend, controllers, REST APIs, UI templates).
        - How the main application class wires things together.
-       - Request flow: Browser -> Controller -> View / REST endpoint.
+       - Request flow: Browser → Controller → View / REST endpoint.
 
-    3. Domain & Components
-       - Important controllers and their responsibilities.
-       - Overview of REST endpoints (/api/...) and what they return.
-       - Overview of HTML pages (index, followup, etc.) and their purpose.
+    3. Components and Responsibilities
+       - Important controllers and their roles (e.g. Hello/Godbye controllers, WebController).
+       - Overview of REST endpoints (`/api/...`) and what they return.
+       - Overview of HTML pages (e.g. `index.html`, `followup.html`, etc.) and their purpose.
 
-    4. UI & REST Interaction
-       - Describe the index page behavior (button "Test REST", /api/hello JSON response).
-       - Describe other relevant pages (e.g. followup) based on their HTML content.
+    4. UI and REST Interaction
+       - Describe the index page behavior (button "Test REST", `/api/hello` JSON response).
+       - Describe other relevant pages based on their HTML content (e.g. followup view if present).
+       - Explain how the UI interacts with the REST controllers.
 
     5. Testing Strategy
-       - Unit tests with JUnit (generated via Azure OpenAI).
-       - UI/API tests with Playwright (generated via Azure OpenAI).
-       - How the tests roughly validate the application (no need to list every assertion).
+       - Unit tests with JUnit (including that some tests are generated with Azure OpenAI).
+       - UI/API tests with Playwright (also generated with Azure OpenAI).
+       - Explain roughly what is covered (no need to list every single assertion).
 
-    6. CI/CD & AI-Assisted Workflows
-       - Describe that GitHub Actions workflows:
+    6. CI/CD and AI-Assisted Workflows
+       - Explain that GitHub Actions workflows:
          - generate/update unit tests for Java using Azure OpenAI,
          - generate/update Playwright UI/API tests using Azure OpenAI,
+         - generate/update this architecture document,
          - run Maven tests and Playwright tests in CI,
-         - (optionally) auto-commit generated tests to the PR branch.
-       - Mention that this document itself is generated by an AI workflow and should be
-         reviewed and refined by humans.
+         - commit generated artifacts back to the **pull request branch** (not directly to `main`).
+       - Mention explicitly that this document itself is generated by an AI workflow
+         and should be reviewed and refined by humans.
 
-    7. Limitations & Next Steps
-       - Point out obvious limitations of the current architecture (e.g. simple demo nature).
-       - Suggest next steps (more layers, services, configuration, error handling, etc.).
+    7. Limitations and Next Steps
+       - Point out obvious limitations of the current architecture (simple demo, no persistence, etc.).
+       - Suggest sensible next steps (more layers, validation, error handling, configuration, etc.).
 
     ### Source Code Context
 
-    Here are the most relevant Java files:
+    Below you find the relevant Java files and HTML templates.
+    Use them as the **factual basis** for your documentation.
+    Do not paste them back 1:1; summarize and explain them instead.
+
+    #### Java files
 
     {java_block}
 
-    Here are the HTML templates:
+    #### HTML templates
 
     {tmpl_block}
 
-    Please now produce the full Markdown content for `docs/architecture.md`.
+    Now produce the full Markdown content for `docs/architecture.md`.
+    Do NOT wrap the whole document in a single code block.
     """)
 
+
+# ---------- main ----------
 
 def main() -> None:
     repo_root = pathlib.Path(__file__).resolve().parents[1]
@@ -230,7 +244,7 @@ def main() -> None:
 
     prompt = build_prompt(java_files, templates)
 
-    print("[INFO] Rufe Azure OpenAI zur Generierung der Architektur-Dokumentation auf...")
+    print("[INFO] Rufe Azure OpenAI zur Generierung der Architektur-Dokumentation auf ...")
     completion = call_azure_openai(prompt)
     md = strip_markdown_fences(completion)
 
