@@ -9,7 +9,7 @@ import java.util.Map;
 public class FibonacciRestController {
 
     @GetMapping("/api/fibonacci")
-    public Map<String, Object> fibonacci(@RequestParam(value = "number", defaultValue = "0") int number) {
+    public Map<String, Object> fibonacci(@RequestParam(value = "number", defaultValue = "0") long number) {
         if (number < 0) {
             return Map.of("error", "Die Zahl muss >= 0 sein.");
         }
@@ -19,7 +19,7 @@ public class FibonacciRestController {
         );
     }
 
-    private long calculateFibonacci(int n) {
+    private long calculateFibonacci(long n) {
         if (n <= 1) return n;
         long a = 0, b = 1;
         for (int i = 2; i <= n; i++) {
