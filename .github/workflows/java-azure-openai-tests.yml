@@ -92,9 +92,10 @@ jobs:
           echo "Committe folgende Änderungen:"
           echo "$CHANGES"
 
-          git fetch origin "${TARGET_BRANCH}"
-          git rebase "origin/${TARGET_BRANCH}" || true
-
+          # Kein rebase mehr:
+          # git fetch origin "${TARGET_BRANCH}"
+          # git rebase "origin/${TARGET_BRANCH}" || true
+          
           git add "${TEST_DIR}"
           git commit -m "chore: add AI-generated unit tests via Azure OpenAI" || {
             echo "Nichts zu committen (evtl. identischer Inhalt)."
