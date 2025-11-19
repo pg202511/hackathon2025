@@ -1,17 +1,18 @@
 package com.example.hackathon2025;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.web.bind.annotation.RequestParam;
 
+import java.lang.reflect.Method;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class GoodbyRestControllerTest {
 
-    private final GoodbyRestController controller = new GoodbyRestController();
-
     @Test
-    void testGoodbyWithName() {
+    void testGoodby_withName_returnsExpectedMessage() {
+        GoodbyRestController controller = new GoodbyRestController();
         Map<String, String> result = controller.goodby("Alice");
 
         assertNotNull(result, "Result map should not be null");
@@ -21,16 +22,8 @@ class GoodbyRestControllerTest {
     }
 
     @Test
-    void testGoodbyWithNullName() {
-        // Calling method directly with null simulates a caller bypassing Spring's defaultValue behavior
-        Map<String, String> result = controller.goodby(null);
-
-        assertNotNull(result);
-        assertEquals("Goodbye, null, from REST API for Hackathon 2025!!!!", result.get("message"));
-    }
-
-    @Test
-    void testGoodbyWithEmptyName() {
+    void testGoodby_withEmptyString_returnsMessageWithEmptyName() {
+        GoodbyRestController controller = new GoodbyRestController();
         Map<String, String> result = controller.goodby("");
 
         assertNotNull(result);
@@ -38,16 +31,36 @@ class GoodbyRestControllerTest {
     }
 
     @Test
-    void testGoodbyMapIsUnmodifiable() {
-        Map<String, String> result = controller.goodby("Bob");
+    void testGoodby_withNull_returnsMessageContainingNullLiteral() {
+        GoodbyRestController controller = new GoodbyRestController();
+        // Calling directly with null (framework default not applied when calling method directly)
+        Map<String, String> result = controller.goodby(null);
 
-        assertThrows(UnsupportedOperationException.class, () -> result.put("another", "value"));
-        // ensure original value remains unchanged
-        assertEquals("Goodbye, Bob, from REST API for Hackathon 2025!!!!", result.get("message"));
+        assertNotNull(result);
+        assertEquals("Goodbye, null, from REST API for Hackathon 2025!!!!", result.get("message"));
     }
 
     @Test
-    void testGoodnightNormal() {
+    void testGoodby_withSpecialCharacters() {
+        GoodbyRestController controller = new GoodbyRestController();
+        String name = "ÄÖÜ-测试-!@#";
+        Map<String, String> result = controller.goodby(name);
+
+        assertNotNull(result);
+        assertEquals("Goodbye, " + name + ", from REST API for Hackathon 2025!!!!", result.get("message"));
+    }
+
+    @Test
+    void testGoodby_requestParamAnnotationHasDefaultValueGast() throws NoSuchMethodException {
+        Method method = GoodbyRestController.class.getMethod("goodby", String.class);
+        RequestParam rp = method.getParameters()[0].getAnnotation(RequestParam.class);
+        assertNotNull(rp, "Parameter should be annotated with @RequestParam");
+        assertEquals("Gast", rp.defaultValue(), "The defaultValue on @RequestParam should be 'Gast'");
+    }
+
+    @Test
+    void testGoodnight_returnsExpectedMessage() {
+        GoodbyRestController controller = new GoodbyRestController();
         Map<String, String> result = controller.goodnight();
 
         assertNotNull(result);
@@ -56,19 +69,12 @@ class GoodbyRestControllerTest {
     }
 
     @Test
-    void testGoodnightMapIsUnmodifiable() {
-        Map<String, String> result = controller.goodnight();
+    void testReturnedMapsAreUnmodifiable() {
+        GoodbyRestController controller = new GoodbyRestController();
+        Map<String, String> r1 = controller.goodby("Bob");
+        Map<String, String> r2 = controller.goodnight();
 
-        assertThrows(UnsupportedOperationException.class, () -> result.put("x", "y"));
-        assertEquals("Good night from REST API for Hackathon 2025!!!", result.get("message"));
-    }
-
-    @Test
-    void testGoodbyWithSpecialCharacters() {
-        String special = "ÄÖÜ-测试-😀";
-        Map<String, String> result = controller.goodby(special);
-
-        assertNotNull(result);
-        assertEquals("Goodbye, " + special + ", from REST API for Hackathon 2025!!!!", result.get("message"));
+        assertThrows(UnsupportedOperationException.class, () -> r1.put("newKey", "newValue"));
+        assertThrows(UnsupportedOperationException.class, () -> r2.put("another", "value"));
     }
 }
