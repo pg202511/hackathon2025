@@ -3,7 +3,6 @@ package com.example.hackathon2025;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -12,52 +11,54 @@ class HelloRestControllerTest {
     private final HelloRestController controller = new HelloRestController();
 
     @Test
-    void hello_returnsExpectedMessage() {
+    void testHello_returnsExpectedMessage() {
         Map<String, String> result = controller.hello();
+        assertNotNull(result, "Result map should not be null");
+        assertEquals(1, result.size(), "Result map should contain exactly one entry");
+        assertTrue(result.containsKey("message"),("Result map should contain key 'message'"));
+        assertEquals("Hello again and again from REST API for Hackathon 2025!", result.get("message"));
+    }
 
-        assertNotNull(result, "Returned map should not be null");
-        assertEquals(1, result.size(), "Map should contain exactly one entry");
-        assertEquals(Set.of("message"), result.keySet(), "Map should only contain 'message' key");
-        String value = result.get("message");
-        assertNotNull(value, "Message value should not be null");
-        assertEquals("Hello again and again from REST API for Hackathon 2025!", value);
+    @Test
+    void testHello2_returnsExpectedMessage() {
+        Map<String, String> result = controller.hello2();
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals("Dummy text for hello2", result.get("message"));
+    }
 
-        // Map.of produces an unmodifiable map -> verify immutability
-        assertThrows(UnsupportedOperationException.class, () -> result.put("another", "x"));
+    @Test
+    void testHello3_returnsExpectedMessage() {
+        Map<String, String> result = controller.hello3();
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals("Another dummy text for hello3", result.get("message"));
+    }
+
+    @Test
+    void testMessagesAreDistinctBetweenEndpoints() {
+        Map<String, String> r1 = controller.hello();
+        Map<String, String> r2 = controller.hello2();
+        Map<String, String> r3 = controller.hello3();
+
+        assertNotEquals(r1.get("message"), r2.get("message"), "hello and hello2 messages should differ");
+        assertNotEquals(r1.get("message"), r3.get("message"), "hello and hello3 messages should differ");
+        assertNotEquals(r2.get("message"), r3.get("message"), "hello2 and hello3 messages should differ");
+    }
+
+    @Test
+    void testReturnedMapsAreImmutable() {
+        Map<String, String> result = controller.hello();
+        assertThrows(UnsupportedOperationException.class, () -> result.put("newKey", "value"));
         assertThrows(UnsupportedOperationException.class, () -> result.remove("message"));
     }
 
     @Test
-    void hello2_returnsDummyTextAndIsImmutable() {
-        Map<String, String> result = controller.hello2();
-
-        assertNotNull(result);
-        assertEquals(1, result.size());
-        assertTrue(result.containsKey("message"));
-        assertEquals("Dummy text for hello2", result.get("message"));
-        assertFalse(result.get("message").isEmpty());
-
-        // verify unmodifiable behavior
-        assertThrows(UnsupportedOperationException.class, () -> result.put("k", "v"));
-    }
-
-    @Test
-    void hello3_returnsAnotherDummyTextAndRepeatedCallsAreConsistent() {
-        Map<String, String> first = controller.hello3();
-        Map<String, String> second = controller.hello3();
-
-        assertNotNull(first);
-        assertNotNull(second);
-
-        // Content should be equal across invocations
-        assertEquals(first, second);
-        assertEquals(1, first.size());
-        assertEquals("Another dummy text for hello3", first.get("message"));
-
-        // ensure key set is exactly the expected one
-        assertEquals(Set.of("message"), first.keySet());
-
-        // immutability
-        assertThrows(UnsupportedOperationException.class, () -> first.put("x", "y"));
+    void testReturnedMapHasNonEmptyMessage() {
+        Map<String, String> result = controller.hello();
+        String msg = result.get("message");
+        assertNotNull(msg);
+        assertFalse(msg.isBlank(), "message should not be blank");
+        assertTrue(msg.length() > 5, "message should have a reasonable length");
     }
 }

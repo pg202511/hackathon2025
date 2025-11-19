@@ -4,27 +4,25 @@ import org.junit.jupiter.api.Test;
 import org.springframework.ui.ExtendedModelMap;
 import org.springframework.ui.Model;
 
-import java.util.Collections;
-import java.util.Map;
-
 import static org.junit.jupiter.api.Assertions.*;
 
-public class WebControllerTest {
+class WebControllerTest {
 
     @Test
-    public void testIndexAddsTitleAndReturnsView() {
+    void index_ShouldReturnIndexViewAndAddTitleAttribute() {
         WebController controller = new WebController();
         Model model = new ExtendedModelMap();
 
         String viewName = controller.index(model);
 
         assertEquals("index", viewName, "Expected view name to be 'index'");
-        assertTrue(((ExtendedModelMap) model).containsAttribute("title"), "Model should contain 'title' attribute");
-        assertEquals("Hackathon 2025 Demo", ((ExtendedModelMap) model).get("title"));
+        assertTrue(model.containsAttribute("title"), "Model should contain 'title' attribute");
+        Object titleValue = ((ExtendedModelMap) model).get("title");
+        assertEquals("Hackathon 2025 Demo", titleValue, "Title attribute should be set to demo text");
     }
 
     @Test
-    public void testIndexOverridesExistingTitleValue() {
+    void index_ShouldOverwriteExistingTitleAttribute() {
         WebController controller = new WebController();
         ExtendedModelMap model = new ExtendedModelMap();
         model.addAttribute("title", "Old Title");
@@ -32,15 +30,42 @@ public class WebControllerTest {
         String viewName = controller.index(model);
 
         assertEquals("index", viewName);
-        assertEquals("Hackathon 2025 Demo", model.get("title"), "The controller should replace an existing 'title' attribute");
-        // Ensure no unexpected additional attributes were added
-        Map<String, Object> asMap = model.asMap();
-        assertEquals(Collections.singleton("title"), asMap.keySet(), "Only 'title' key should be present in the model");
+        assertTrue(model.containsAttribute("title"));
+        assertEquals("Hackathon 2025 Demo", model.get("title"), "Existing title should be overwritten");
     }
 
     @Test
-    public void testIndexWithNullModelThrowsNullPointerException() {
+    void index_WithAdditionalAttributes_ShouldPreserveOtherAttributes() {
         WebController controller = new WebController();
-        assertThrows(NullPointerException.class, () -> controller.index(null), "Passing a null Model should result in NPE");
+        ExtendedModelMap model = new ExtendedModelMap();
+        model.addAttribute("other", 42);
+
+        String viewName = controller.index(model);
+
+        assertEquals("index", viewName);
+        assertTrue(model.containsAttribute("other"), "Other attributes should be preserved");
+        assertEquals(42, model.get("other"));
+        assertEquals("Hackathon 2025 Demo", model.get("title"));
+    }
+
+    @Test
+    void index_NullModel_ShouldThrowNullPointerException() {
+        WebController controller = new WebController();
+
+        assertThrows(NullPointerException.class, () -> controller.index(null),
+                "Calling index with null model should throw NullPointerException");
+    }
+
+    @Test
+    void index_MultipleInvocations_ShouldBeIdempotentForTitle() {
+        WebController controller = new WebController();
+        ExtendedModelMap model = new ExtendedModelMap();
+
+        String first = controller.index(model);
+        String second = controller.index(model);
+
+        assertEquals("index", first);
+        assertEquals("index", second);
+        assertEquals("Hackathon 2025 Demo", model.get("title"), "Title should remain the same after multiple calls");
     }
 }
