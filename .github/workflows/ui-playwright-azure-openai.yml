@@ -130,8 +130,9 @@ jobs:
           echo "Committe folgende Änderungen:"
           echo "$CHANGES"
 
-          git fetch origin "${TARGET_BRANCH}"
-          git rebase "origin/${TARGET_BRANCH}" || true
+          # Kein rebase mehr:
+          # git fetch origin "${TARGET_BRANCH}"
+          # git rebase "origin/${TARGET_BRANCH}" || true
 
           git add tests
           git commit -m "chore: update AI-generated UI tests (Playwright/Azure OpenAI)" || {
