@@ -1,16 +1,52 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
-<head><meta charset="UTF-8"><title th:text="${title}">Hackathon</title></head>
+<head>
+    <meta charset="UTF-8">
+    <title th:text="${title}">Hackathon</title>
+    <style>
+        #natureImg { max-width: 600px; max-height: 400px; margin-top: 20px; }
+        #imgKeyword { font-weight: bold; }
+    </style>
+</head>
 <body>
 <h1 th:text="${title}">Hackathon 2025 Demo</h1>
 <p>Spring Web + REST API Demo</p>
 <button onclick="callApi()">Test REST</button>
 <p id="apiResult"></p>
+
+<div>
+    <input type="text" id="natureInput" placeholder="Suchbegriff (z.B. tree, river, sunflower)">
+    <button onclick="showNatureImage()">Bild anzeigen</button>
+    <button onclick="showNatureImage('river')">River</button>
+    <button onclick="showNatureImage('sunflower')">Sunflower</button>
+</div>
+
+<div id="natureResult">
+    <p id="imgKeyword"></p>
+    <img id="natureImg" src="" alt="Naturbild" style="display:none;">
+</div>
+
 <script>
 async function callApi(){
  const res = await fetch('/api/hello');
  const j = await res.json();
  document.getElementById('apiResult').innerText = JSON.stringify(j);
+}
+
+async function showNatureImage(keyword) {
+    if (!keyword) {
+        keyword = document.getElementById('natureInput').value.trim();
+        if (!keyword) {
+            alert('Bitte einen Suchbegriff eingeben!');
+            return;
+        }
+    }
+    const res = await fetch('/api/nature-image?keyword=' + encodeURIComponent(keyword));
+    const j = await res.json();
+    document.getElementById('imgKeyword').innerText = 'Keyword: ' + j.keyword;
+    const img = document.getElementById('natureImg');
+    img.src = j.imageUrl;
+    img.style.display = 'block';
 }
 </script>
 </body>
