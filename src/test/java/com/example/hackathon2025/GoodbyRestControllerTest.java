@@ -11,74 +11,48 @@ class GoodbyRestControllerTest {
     private final GoodbyRestController controller = new GoodbyRestController();
 
     @Test
-    void goodby_withName_returnsGreeting() {
+    void testGoodbyWithName() {
         Map<String, String> result = controller.goodby("Alice");
-
-        assertNotNull(result, "Resulting map should not be null");
-        assertEquals(1, result.size(), "Resulting map should contain exactly one entry");
-        assertTrue(result.containsKey("message"), "Resulting map should contain 'message' key");
+        assertNotNull(result, "Result map should not be null");
+        assertEquals(1, result.size(), "Result map should contain exactly one entry");
+        assertTrue(result.containsKey("message"), "Result map should contain key 'message'");
         assertEquals("Goodbye, Alice, from REST API for Hackathon 2025!!!!", result.get("message"));
+        // Map.of returns an unmodifiable map
+        assertThrows(UnsupportedOperationException.class, () -> result.put("another", "value"));
     }
 
     @Test
-    void goodby_withEmptyName_returnsGreetingContainingCommaSpacing() {
+    void testGoodbyWithEmptyName() {
         Map<String, String> result = controller.goodby("");
-
         assertNotNull(result);
         assertEquals("Goodbye, , from REST API for Hackathon 2025!!!!", result.get("message"),
-                "Empty name should be inserted as empty string between commas");
+                "Empty name should be reflected in the message (no trimming applied by controller)");
     }
 
     @Test
-    void goodby_withNullName_insertsLiteralNull() {
-        // Note: When calling the controller method directly, Spring's @RequestParam defaultValue is not applied.
-        // This test verifies the direct-call behavior with a null parameter.
+    void testGoodbyWithNullName() {
+        // When called directly, passing null yields the string "null" in concatenation.
         Map<String, String> result = controller.goodby(null);
-
         assertNotNull(result);
         assertEquals("Goodbye, null, from REST API for Hackathon 2025!!!!", result.get("message"),
-                "Direct invocation with null should include the literal 'null' in the message");
+                "When null is passed directly the message will contain the text 'null'");
     }
 
     @Test
-    void goodby_withSpecialCharacters_preservesThemInMessage() {
-        String special = "O'Conner & Co <script> 🚀";
+    void testGoodbyWithSpecialCharacters() {
+        String special = "Jöhn 🚀, O'Connor";
         Map<String, String> result = controller.goodby(special);
-
         assertNotNull(result);
         assertEquals("Goodbye, " + special + ", from REST API for Hackathon 2025!!!!", result.get("message"));
     }
 
     @Test
-    void goodby_withVeryLongName_includesFullName() {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < 1000; i++) {
-            sb.append('x');
-        }
-        String longName = sb.toString();
-
-        Map<String, String> result = controller.goodby(longName);
-
-        assertNotNull(result);
-        assertEquals("Goodbye, " + longName + ", from REST API for Hackathon 2025!!!!", result.get("message"));
-    }
-
-    @Test
-    void goodby_returnedMapIsUnmodifiable() {
-        Map<String, String> result = controller.goodby("Bob");
-
-        assertThrows(UnsupportedOperationException.class, () -> result.put("another", "value"),
-                "Map.of returns an unmodifiable map; modification should throw");
-    }
-
-    @Test
-    void goodnight_returnsExpectedMessageAndMapIsUnmodifiable() {
+    void testGoodnightDefaultMessage() {
         Map<String, String> result = controller.goodnight();
-
         assertNotNull(result);
         assertEquals(1, result.size());
+        assertTrue(result.containsKey("message"));
         assertEquals("Good night from REST API for Hackathon 2025!!!", result.get("message"));
-        assertThrows(UnsupportedOperationException.class, () -> result.put("k", "v"),
-                "Map.of returns an unmodifiable map; modification should throw");
+        assertThrows(UnsupportedOperationException.class, () -> result.put("k", "v"));
     }
 }

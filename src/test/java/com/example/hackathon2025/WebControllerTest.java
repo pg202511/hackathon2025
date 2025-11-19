@@ -1,71 +1,77 @@
 package com.example.hackathon2025;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ui.ExtendedModelMap;
 import org.springframework.ui.Model;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class WebControllerTest {
+public class WebControllerTest {
 
-    @Test
-    void index_ShouldReturnIndexViewAndAddTitleAttribute() {
-        WebController controller = new WebController();
-        Model model = new ExtendedModelMap();
+    private WebController controller;
 
-        String viewName = controller.index(model);
-
-        assertEquals("index", viewName, "Expected view name to be 'index'");
-        assertTrue(model.containsAttribute("title"), "Model should contain 'title' attribute");
-        Object titleValue = ((ExtendedModelMap) model).get("title");
-        assertEquals("Hackathon 2025 Demo", titleValue, "Title attribute should be set to demo text");
+    @BeforeEach
+    public void setUp() {
+        controller = new WebController();
     }
 
     @Test
-    void index_ShouldOverwriteExistingTitleAttribute() {
-        WebController controller = new WebController();
+    public void testIndexAddsTitleAndReturnsView() {
+        Model model = new ExtendedModelMap();
+
+        String view = controller.index(model);
+
+        assertEquals("index", view, "Expected view name to be 'index'");
+        assertTrue(model.containsAttribute("title"), "Model should contain attribute 'title'");
+        assertEquals("Hackathon 2025 Demo", model.asMap().get("title"));
+        // ensure only the title attribute was added
+        assertEquals(1, ((ExtendedModelMap) model).size());
+    }
+
+    @Test
+    public void testIndexOverwritesExistingTitle() {
         ExtendedModelMap model = new ExtendedModelMap();
         model.addAttribute("title", "Old Title");
 
-        String viewName = controller.index(model);
+        String view = controller.index(model);
 
-        assertEquals("index", viewName);
-        assertTrue(model.containsAttribute("title"));
-        assertEquals("Hackathon 2025 Demo", model.get("title"), "Existing title should be overwritten");
-    }
-
-    @Test
-    void index_WithAdditionalAttributes_ShouldPreserveOtherAttributes() {
-        WebController controller = new WebController();
-        ExtendedModelMap model = new ExtendedModelMap();
-        model.addAttribute("other", 42);
-
-        String viewName = controller.index(model);
-
-        assertEquals("index", viewName);
-        assertTrue(model.containsAttribute("other"), "Other attributes should be preserved");
-        assertEquals(42, model.get("other"));
+        assertEquals("index", view);
         assertEquals("Hackathon 2025 Demo", model.get("title"));
+        // still only one entry for title
+        assertEquals(1, model.size());
     }
 
     @Test
-    void index_NullModel_ShouldThrowNullPointerException() {
-        WebController controller = new WebController();
+    public void testIndexPreservesOtherAttributes() {
+        ExtendedModelMap model = new ExtendedModelMap();
+        model.addAttribute("user", "Alice");
 
-        assertThrows(NullPointerException.class, () -> controller.index(null),
-                "Calling index with null model should throw NullPointerException");
+        String view = controller.index(model);
+
+        assertEquals("index", view);
+        assertEquals("Alice", model.get("user"), "Existing attributes should be preserved");
+        assertEquals("Hackathon 2025 Demo", model.get("title"));
+        // should have both attributes
+        assertEquals(2, model.size());
     }
 
     @Test
-    void index_MultipleInvocations_ShouldBeIdempotentForTitle() {
-        WebController controller = new WebController();
+    public void testIndexMultipleInvocationsIdempotentForTitle() {
         ExtendedModelMap model = new ExtendedModelMap();
 
-        String first = controller.index(model);
-        String second = controller.index(model);
+        String firstView = controller.index(model);
+        String secondView = controller.index(model);
 
-        assertEquals("index", first);
-        assertEquals("index", second);
-        assertEquals("Hackathon 2025 Demo", model.get("title"), "Title should remain the same after multiple calls");
+        assertEquals("index", firstView);
+        assertEquals("index", secondView);
+        assertEquals("Hackathon 2025 Demo", model.get("title"));
+        // repeated calls should not create multiple title entries
+        assertEquals(1, model.size());
+    }
+
+    @Test
+    public void testIndexWithNullModelThrowsNpe() {
+        assertThrows(NullPointerException.class, () -> controller.index(null));
     }
 }
