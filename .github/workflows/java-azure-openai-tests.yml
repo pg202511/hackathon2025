@@ -3,6 +3,8 @@ name: Java CI mit Azure OpenAI Testgenerierung
 on:
   pull_request:
     branches: [ main ]
+  push:
+    branches: [ main ]
 
 permissions:
   contents: write
@@ -20,12 +22,14 @@ jobs:
       AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
       AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
 
+      GIT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+      GIT_HEAD_SHA: ${{ github.sha }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.head_ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -44,7 +48,7 @@ jobs:
           java-version: '17'
           cache: 'maven'
 
-      # 1) Tests generieren
+      # 1) Tests generieren / aktualisieren
       - name: Generate/Update Unit Tests with Azure OpenAI
         run: |
           python scripts/generate_tests_with_azure_openai.py \
@@ -54,8 +58,8 @@ jobs:
       - name: Show generated test changes
         run: |
           echo "Änderungen an Testdateien:"
-          git status
-          git diff --stat || true
+          git status --porcelain "$TEST_DIR" || true
+          git diff --stat "$TEST_DIR" || true
 
       # 2) Build & Tests
       - name: Build & Run Tests (mvn verify)
@@ -70,40 +74,50 @@ jobs:
           path: |
             **/target/surefire-reports/*.xml
             **/target/site/jacoco/
+          if-no-files-found: ignore
 
-      # 3) Änderungen an Tests committen & zurück pushen (nur im PR-Branch)
+      # 3) Änderungen an Tests committen & zurück pushen
       - name: Commit & push generated tests
+        # Nur bei Erfolg + nur, wenn es kein Fork ist
         if: >
           success() &&
-          github.event.pull_request.head.repo.full_name == github.repository
+          (
+            github.event_name == 'push' ||
+            (github.event_name == 'pull_request' &&
+             github.event.pull_request.head.repo.full_name == github.repository)
+          )
         env:
-          TARGET_BRANCH: ${{ github.head_ref }}
+          TARGET_BRANCH: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
           TEST_DIR: ${{ env.TEST_DIR }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          CHANGES=$(git status --porcelain "${TEST_DIR}" || true)
-          if [ -z "$CHANGES" ]; then
+          echo "🔍 Git-Status vor git add:"
+          git status --porcelain "$TEST_DIR" || true
+
+          # ALLE Änderungen + neue Dateien im Testverzeichnis aufnehmen
+          git add -A "$TEST_DIR"
+
+          # Prüfen, ob nun etwas zum Commit bereit steht
+          if git diff --cached --quiet; then
             echo "Keine neuen oder geänderten Testdateien. Kein Commit nötig."
             exit 0
           fi
 
-          echo "Committe folgende Änderungen:"
-          echo "$CHANGES"
+          echo "📝 Committe folgende Änderungen:"
+          git diff --cached --stat
 
-          # Kein rebase mehr:
-          # git fetch origin "${TARGET_BRANCH}"
-          # git rebase "origin/${TARGET_BRANCH}" || true
-          
-          git add "${TEST_DIR}"
-          git commit -m "chore: add AI-generated unit tests via Azure OpenAI" || {
-            echo "Nichts zu committen (evtl. identischer Inhalt)."
+          git commit -m "chore: update AI-generated unit tests (Azure OpenAI)" || {
+            echo "Nichts zu committen."
             exit 0
           }
 
-          echo "Pushe auf PR-Branch: ${TARGET_BRANCH}"
-          git push --force-with-lease origin HEAD:"${TARGET_BRANCH}" || {
-            echo "Warnung: Push ist fehlgeschlagen (Race Condition o.ä.). Auto-Update der Tests für diesen Run übersprungen."
+          echo "📥 Hole ggf. entfernte Änderungen (rebase): origin/${TARGET_BRANCH}"
+          git pull --rebase origin "${TARGET_BRANCH}" || true
+
+          echo "📤 Pushe auf Branch: ${TARGET_BRANCH}"
+          git push origin HEAD:"${TARGET_BRANCH}" || {
+            echo "⚠️ Konnte nicht pushen – möglicherweise Race Condition. Auto-Update der Tests wurde in diesem Run übersprungen."
             exit 0
           }
