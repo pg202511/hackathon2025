@@ -8,7 +8,7 @@ import java.util.Map;
 public class Hello2RestController {
     @GetMapping("/api/hello2alt")
     public Map<String,String> hello2alt() {
-        return Map.of("message","Hello2 vom neuen REST-Controller!");
+        return Map.of("message","Hello2 vom neuen REST-Controller!!");
     }
 }
 
