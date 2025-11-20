@@ -144,5 +144,5 @@ The current architecture is intentionally simple and optimized for demonstration
 ## Related Work Items
 
 - **Pull Request:**
-  - Title: chore: update AI-generated architecture docs (Azure OpenAI)
+  - Title: Feature/ai tests hackathon
 
