@@ -15,7 +15,7 @@ class HelloRestControllerTest {
 
         Map<String, String> result = controller.hello();
 
-        assertNotNull(result, "Resulting map should not be null");
+        assertNotNull(result, "Resulting map should not be null!");
         assertEquals(1, result.size(), "Map should contain exactly one entry");
         assertTrue(result.containsKey("message"), "Map should contain 'message' key");
         assertEquals("Hello again and again from REST API for Hackathon 2025!", result.get("message"));
