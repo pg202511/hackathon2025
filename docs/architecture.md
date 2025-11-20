@@ -141,3 +141,8 @@ The current architecture is intentionally simple and optimized for demonstration
 
 - Future work could include: adding persistence, more complex domain logic, integration tests, API documentation (e.g. via OpenAPI/Swagger) and more detailed architecture diagrams.
 
+## Related Work Items
+
+- **Pull Request:**
+  - Title: chore: update AI-generated architecture docs (Azure OpenAI)
+
