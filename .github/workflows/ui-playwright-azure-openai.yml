@@ -19,6 +19,8 @@ jobs:
       AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
       AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
 
+      TESTS_DIR: tests
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,23 +35,31 @@ jobs:
           java-version: '17'
           cache: 'maven'
 
-      - name: Build Spring Boot app (skip tests)
-        run: mvn -B -ntp clean package -DskipTests
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Init Node project and install Playwright
+      # Optional: sicherstellen, dass das Projekt baut
+      - name: Build Spring Boot app (compile/package, ohne Tests)
         run: |
-          if [ ! -f package.json ]; then
-            echo "Kein package.json gefunden – initialisiere Node-Projekt..."
-            npm init -y
-          fi
+          mvn -B -ntp clean package -DskipTests
 
-          npm install -D @playwright/test
-          npx playwright install --with-deps
+      - name: Start Spring Boot app (via mvn spring-boot:run)
+        run: |
+          echo "Starte Spring Boot Anwendung via 'mvn spring-boot:run' ..."
+          nohup mvn -DskipTests spring-boot:run > app.log 2>&1 &
+          echo $! > app.pid
+
+          echo "Warte, bis http://localhost:${APP_PORT}/ erreichbar ist..."
+          for i in {1..30}; do
+            if curl -sSf "http://localhost:${APP_PORT}/" > /dev/null; then
+              echo "App ist erreichbar."
+              exit 0
+            fi
+            echo "Noch nicht erreichbar, warte..."
+            sleep 2
+          done
+
+          echo "App ist nach Timeout nicht erreichbar."
+          echo "---- app.log ----"
+          cat app.log || true
+          exit 1
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -61,87 +71,82 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
 
-      - name: Start app, generate UI tests and run Playwright
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright browsers
         run: |
-          echo "Starte Spring Boot Anwendung mit: mvn spring-boot:run"
-          mvn -B -ntp spring-boot:run -DskipTests &
-          APP_PID=$!
-          echo "$APP_PID" > app.pid
+          npx playwright install --with-deps
 
-          echo "Warte, bis http://localhost:${APP_PORT}/ erreichbar ist..."
-          READY=false
-          for i in {1..30}; do
-            if curl -fsS "http://localhost:${APP_PORT}/" > /dev/null; then
-              echo "App ist erreichbar."
-              READY=true
-              break
-            fi
-            echo "Noch nicht erreichbar, warte..."
-            sleep 2
-          done
-
-          if [ "$READY" != "true" ]; then
-            echo "App nach 30 Versuchen nicht erreichbar – breche ab."
-            kill "$APP_PID" || true
-            exit 1
-          fi
-
-          echo "Generiere Playwright-UI-Tests mittels Azure OpenAI..."
+      - name: Generate Playwright UI/API tests with Azure OpenAI
+        run: |
           python scripts/generate_ui_tests_with_azure_openai.py
 
-          echo "Führe Playwright-Tests aus (mit HTML-Report)..."
-          npx playwright test --reporter=html
+      - name: Show Playwright test changes
+        run: |
+          echo "Änderungen an Playwright-Tests:"
+          git status --porcelain "$TESTS_DIR" || true
+          git diff --stat "$TESTS_DIR" || true
 
-      - name: Stop app
+      - name: Run Playwright tests
+        run: |
+          npx playwright test
+        env:
+          APP_BASE_URL: http://localhost:${APP_PORT}
+
+      - name: Stop Spring Boot app
         if: always()
         run: |
           if [ -f app.pid ]; then
-            PID=$(cat app.pid)
-            echo "Beende App mit PID $PID ..."
-            kill "$PID" || true
-          else
-            echo "Keine app.pid gefunden – vermutlich lief die App nicht mehr."
-            exit 0
+            echo "Beende App mit PID $(cat app.pid) ..."
+            kill "$(cat app.pid)" || true
           fi
 
-      - name: Upload Playwright report
+      - name: Upload Playwright HTML report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: playwright-report/
+          if-no-files-found: warn
 
-      - name: Commit & push generated UI tests
+      - name: Commit & push generated Playwright tests
         if: >
           success() &&
           github.event.pull_request.head.repo.full_name == github.repository
         env:
           TARGET_BRANCH: ${{ github.head_ref }}
+          TESTS_DIR: ${{ env.TESTS_DIR }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          CHANGES=$(git status --porcelain "tests" || true)
-          if [ -z "$CHANGES" ]; then
-            echo "Keine neuen oder geänderten UI-Testdateien. Kein Commit nötig."
+          echo "🔍 Git-Status vor git add (Playwright-Tests):"
+          git status --porcelain "$TESTS_DIR" || true
+
+          # Alle Änderungen & neue Dateien in tests/ aufnehmen
+          git add -A "$TESTS_DIR"
+
+          if git diff --cached --quiet; then
+            echo "Keine neuen oder geänderten Playwright-Testdateien. Kein Commit nötig."
             exit 0
           fi
 
-          echo "Committe folgende Änderungen:"
-          echo "$CHANGES"
+          echo "📝 Committe folgende Änderungen:"
+          git diff --cached --stat
 
-          # Kein rebase mehr:
-          # git fetch origin "${TARGET_BRANCH}"
-          # git rebase "origin/${TARGET_BRANCH}" || true
-
-          git add tests
-          git commit -m "chore: update AI-generated UI tests (Playwright/Azure OpenAI)" || {
-            echo "Nichts zu committen (evtl. identischer Inhalt)."
+          git commit -m "chore: update AI-generated UI/API tests (Playwright + Azure OpenAI)" || {
+            echo "Nichts zu committen."
             exit 0
           }
 
-          echo "Pushe auf PR-Branch: ${TARGET_BRANCH}"
-          git push --force-with-lease origin HEAD:"${TARGET_BRANCH}" || {
-            echo "Warnung: Push ist fehlgeschlagen (Race Condition o.ä.). Auto-Update der Tests für diesen Run übersprungen."
+          echo "📥 Hole ggf. entfernte Änderungen (rebase): origin/${TARGET_BRANCH}"
+          git pull --rebase origin "${TARGET_BRANCH}" || true
+
+          echo "📤 Pushe auf PR-Branch: ${TARGET_BRANCH}"
+          git push origin HEAD:"${TARGET_BRANCH}" || {
+            echo "⚠️ Konnte nicht pushen – möglicherweise Race Condition. Auto-Update der UI-Tests wurde in diesem Run übersprungen."
             exit 0
           }
