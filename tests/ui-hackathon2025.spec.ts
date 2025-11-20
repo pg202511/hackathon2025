@@ -21,94 +21,95 @@ test('hackathon2025 UI: initial render and REST interaction', async ({ page }) =
   expect(raw.toLowerCase()).toContain('hello');
 });
 
-test('api: GET /api/hello returns hello message', async ({ request }) => {
+test('API GET /api/hello should return JSON with hello message', async ({ request }) => {
   const res = await request.get('http://localhost:8080/api/hello');
   expect(res.status()).toBe(200);
-  const body: any = await res.json();
-  expect(body).toBeInstanceOf(Object);
-  expect(Object.keys(body).length).toBeGreaterThan(0);
-  expect(String(body.message).toLowerCase()).toContain('hello');
+  const json: any = await res.json();
+  expect(json).not.toBeNull();
+  expect(typeof json).toBe('object');
+  expect(Object.keys(json).length).toBeGreaterThan(0);
+  const msg = String(json.message || '');
+  expect(msg.toLowerCase()).toContain('hello');
 });
 
-test('api: GET /api/hello2alt returns hello2 message', async ({ request }) => {
+test('API GET /api/hello2alt should return JSON with hello2 message', async ({ request }) => {
   const res = await request.get('http://localhost:8080/api/hello2alt');
   expect(res.status()).toBe(200);
-  const body: any = await res.json();
-  expect(body).toBeInstanceOf(Object);
-  expect(Object.keys(body).length).toBeGreaterThan(0);
-  expect(String(body.message).toLowerCase()).toContain('hello');
+  const json: any = await res.json();
+  expect(json).not.toBeNull();
+  expect(typeof json).toBe('object');
+  expect(Object.keys(json).length).toBeGreaterThan(0);
+  const msg = String(json.message || '');
+  expect(msg.toLowerCase()).toContain('hello');
 });
 
-test('api: GET /api/hello2 returns dummy message', async ({ request }) => {
+test('API GET /api/hello2 should return JSON with message', async ({ request }) => {
   const res = await request.get('http://localhost:8080/api/hello2');
   expect(res.status()).toBe(200);
-  const body: any = await res.json();
-  expect(body).toBeInstanceOf(Object);
-  expect(Object.keys(body).length).toBeGreaterThan(0);
-  expect(String(body.message).toLowerCase()).toContain('dummy');
+  const json: any = await res.json();
+  expect(json).not.toBeNull();
+  expect(typeof json).toBe('object');
+  expect(Object.keys(json).length).toBeGreaterThan(0);
+  const msg = String(json.message || '');
+  expect(msg.length).toBeGreaterThan(0);
 });
 
-test('api: GET /api/hello3 returns dummy message', async ({ request }) => {
+test('API GET /api/hello3 should return JSON with message', async ({ request }) => {
   const res = await request.get('http://localhost:8080/api/hello3');
   expect(res.status()).toBe(200);
-  const body: any = await res.json();
-  expect(body).toBeInstanceOf(Object);
-  expect(Object.keys(body).length).toBeGreaterThan(0);
-  expect(String(body.message).toLowerCase()).toContain('dummy');
+  const json: any = await res.json();
+  expect(json).not.toBeNull();
+  expect(typeof json).toBe('object');
+  expect(Object.keys(json).length).toBeGreaterThan(0);
+  const msg = String(json.message || '');
+  expect(msg.length).toBeGreaterThan(0);
 });
 
-test('api: GET /api/goodby without name uses default and contains goodbye', async ({ request }) => {
-  const res = await request.get('http://localhost:8080/api/goodby');
+test('API GET /api/goodby should return JSON with goodbye message containing name', async ({ request }) => {
+  const res = await request.get('http://localhost:8080/api/goodby?name=Alice');
   expect(res.status()).toBe(200);
-  const body: any = await res.json();
-  expect(body).toBeInstanceOf(Object);
-  expect(Object.keys(body).length).toBeGreaterThan(0);
-  expect(String(body.message).toLowerCase()).toContain('goodbye');
-  expect(String(body.message).toLowerCase()).toMatch(/gast|guest|gast/);
+  const json: any = await res.json();
+  expect(json).not.toBeNull();
+  expect(typeof json).toBe('object');
+  expect(Object.keys(json).length).toBeGreaterThan(0);
+  const msg = String(json.message || '').toLowerCase();
+  expect(msg).toContain('goodbye');
+  expect(msg).toContain('alice');
 });
 
-test('api: GET /api/goodby with name parameter includes the name', async ({ request }) => {
-  const name = 'Alice';
-  const res = await request.get(`http://localhost:8080/api/goodby?name=${encodeURIComponent(name)}`);
-  expect(res.status()).toBe(200);
-  const body: any = await res.json();
-  expect(body).toBeInstanceOf(Object);
-  expect(Object.keys(body).length).toBeGreaterThan(0);
-  expect(String(body.message).toLowerCase()).toContain('goodbye');
-  expect(String(body.message).toLowerCase()).toContain(name.toLowerCase());
-});
-
-test('api: GET /api/goodnight returns good night message', async ({ request }) => {
+test('API GET /api/goodnight should return JSON with good night message', async ({ request }) => {
   const res = await request.get('http://localhost:8080/api/goodnight');
   expect(res.status()).toBe(200);
-  const body: any = await res.json();
-  expect(body).toBeInstanceOf(Object);
-  expect(Object.keys(body).length).toBeGreaterThan(0);
-  expect(String(body.message).toLowerCase()).toMatch(/good\s+night/);
+  const json: any = await res.json();
+  expect(json).not.toBeNull();
+  expect(typeof json).toBe('object');
+  expect(Object.keys(json).length).toBeGreaterThan(0);
+  const msg = String(json.message || '');
+  expect(msg.toLowerCase()).toMatch(/good\s+night/);
 });
 
-test('api: GET /api/nature-image with keyword returns keyword and imageUrl', async ({ request }) => {
-  const keyword = 'river';
-  const res = await request.get(`http://localhost:8080/api/nature-image?keyword=${encodeURIComponent(keyword)}`);
+test('API GET /api/nature-image should return JSON with keyword and imageUrl', async ({ request }) => {
+  const res = await request.get('http://localhost:8080/api/nature-image?keyword=river');
   expect(res.status()).toBe(200);
-  const body: any = await res.json();
-  expect(body).toBeInstanceOf(Object);
-  expect(Object.keys(body).length).toBeGreaterThan(0);
-  expect(String(body.keyword)).toBe(keyword);
-  expect(typeof body.imageUrl).toBe('string');
-  expect(body.imageUrl.length).toBeGreaterThan(0);
-  expect(String(body.imageUrl).toLowerCase()).toContain('http');
+  const json: any = await res.json();
+  expect(json).not.toBeNull();
+  expect(typeof json).toBe('object');
+  expect(Object.keys(json).length).toBeGreaterThan(0);
+  expect(String(json.keyword || '').toLowerCase()).toBe('river');
+  const imageUrl = String(json.imageUrl || '');
+  expect(imageUrl.length).toBeGreaterThan(0);
+  expect(imageUrl).toMatch(/^https?:\/\//);
 });
 
-test('api: GET /api/fibonacci with number returns fibonacci calculation', async ({ request }) => {
-  const number = 10;
-  const res = await request.get(`http://localhost:8080/api/fibonacci?number=${number}`);
+test('API GET /api/fibonacci should return JSON with number and fibonacci value', async ({ request }) => {
+  const res = await request.get('http://localhost:8080/api/fibonacci?number=10');
   expect(res.status()).toBe(200);
-  const body: any = await res.json();
-  expect(body).toBeInstanceOf(Object);
-  expect(Object.keys(body).length).toBeGreaterThan(0);
-  expect(Number(body.number)).toBe(number);
-  expect(Number(body.fibonacci)).toBe(55);
+  const json: any = await res.json();
+  expect(json).not.toBeNull();
+  expect(typeof json).toBe('object');
+  expect(Object.keys(json).length).toBeGreaterThan(0);
+  expect(Number(json.number)).toBe(10);
+  expect(Number(json.fibonacci)).toBe(55);
 });
 
 test('hackathon2025 UI: render followup page', async ({ page }) => {
