@@ -38,6 +38,12 @@ The application follows a typical Spring Boot architecture:
 
 The following controllers were detected based on `@Controller` / `@RestController` annotations:
 
+- `Hello2RestController`  
+  - Package: `com.example.hackathon2025`  
+  - Source: `hackathon2025/Hello2RestController.java`  
+  - Type: REST controller
+  - Endpoints:
+    - `GET` `/api/hello2alt`
 - `HelloRestController`  
   - Package: `com.example.hackathon2025`  
   - Source: `hackathon2025/HelloRestController.java`  
@@ -143,6 +149,10 @@ The current architecture is intentionally simple and optimized for demonstration
 
 ## Related Work Items
 
+- **Jira Ticket (from branch):** [hd-15](https://gtd.endress.com/hd-15)
 - **Pull Request:**
-  - Title: chore: update AI-generated architecture docs (Azure OpenAI)
+  - Title: new Hello RestController
+  - Description:
+
+    generated RestController
 
