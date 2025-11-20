@@ -76,6 +76,17 @@ jobs:
         with:
           node-version: '20'
 
+      # 🔹 Hier: kleines Node-Projekt + Playwright Test installieren
+      - name: Init Node project and install Playwright Test
+        run: |
+          if [ ! -f package.json ]; then
+            echo "Keine package.json gefunden – initialisiere minimales Node-Projekt..."
+            npm init -y
+          fi
+
+          echo "Installiere @playwright/test als Dev-Dependency..."
+          npm install --save-dev @playwright/test
+
       - name: Install Playwright browsers
         run: |
           npx playwright install --with-deps
