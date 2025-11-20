@@ -149,10 +149,21 @@ The current architecture is intentionally simple and optimized for demonstration
 
 ## Related Work Items
 
-- **Jira Ticket (from branch):** [hd-15](https://gtd.endress.com/hd-15)
 - **Pull Request:**
-  - Title: new Hello RestController
+  - Title: Update ui-playwright-azure-openai.yml
   - Description:
 
-    generated RestController
+    <!-- kody-pr-summary:start -->
+    This pull request refactors and enhances the `ui-playwright-azure-openai.yml` GitHub Actions workflow to improve the reliability, clarity, and robustness of UI test generation and execution.
+
+    Key changes include:
+
+    *   **Refactored Application Startup**: The Spring Boot application startup is now a dedicated step, running in the background with `nohup`, improved logging, and a more robust readiness check that waits for the application to be accessible.
+    *   **Granular Playwright Setup**: Playwright browser installation is separated into its own step for clearer dependency management.
+    *   **Enhanced Test Generation and Execution**:
+        *   A new step explicitly shows `git diff` for generated Playwright tests, providing better visibility into changes made by Azure OpenAI.
+        *   Playwright tests are now executed with `APP_BASE_URL` explicitly passed as an environment variable.
+    *   **Improved Commit and Push Logic for Generated Tests**: The workflow for committing and pushing AI-generated tests has been made more robust. It now explicitly stages all changes within the `tests` directory, checks for actual changes before committing, and performs a `git pull --rebase` before pushing to mitigate race conditions and ensure a cleaner history.
+    *   **General Workflow Improvements**: Steps are renamed for better clarity, and the Playwright HTML report upload is made more resilient with `if-no-files-found: warn`.
+    <!-- kody-pr-summary:end -->
 
