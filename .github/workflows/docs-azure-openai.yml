@@ -41,8 +41,8 @@ jobs:
       - name: Show doc changes
         run: |
           echo "Änderungen an der Dokumentation:"
-          git status
-          git diff --stat || true
+          git status --porcelain docs || true
+          git diff --stat docs || true
 
       - name: Commit & push generated docs
         if: >
@@ -54,28 +54,29 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          CHANGES=$(git status --porcelain "docs" || true)
-          if [ -z "$CHANGES" ]; then
+          echo "🔍 Git-Status vor git add (Docs):"
+          git status --porcelain docs || true
+
+          git add -A docs
+
+          if git diff --cached --quiet; then
             echo "Keine neuen oder geänderten Doku-Dateien. Kein Commit nötig."
             exit 0
           fi
 
-          echo "Committe folgende Änderungen:"
-          echo "$CHANGES"
+          echo "📝 Committe folgende Änderungen:"
+          git diff --cached --stat
 
-          # Kein rebase mehr:
-          # git fetch origin "${TARGET_BRANCH}"
-          # git rebase "origin/${TARGET_BRANCH}" || true
-
-
-          git add docs
           git commit -m "chore: update AI-generated architecture docs (Azure OpenAI)" || {
-            echo "Nichts zu committen (evtl. identischer Inhalt)."
+            echo "Nichts zu committen."
             exit 0
           }
 
-          echo "Pushe auf PR-Branch: ${TARGET_BRANCH}"
-          git push --force-with-lease origin HEAD:"${TARGET_BRANCH}" || {
-            echo "Warnung: Push ist fehlgeschlagen (Race Condition o.ä.). Auto-Update der Doku wurde für diesen Run übersprungen."
+          echo "📥 Hole ggf. entfernte Änderungen (rebase): origin/${TARGET_BRANCH}"
+          git pull --rebase origin "${TARGET_BRANCH}" || true
+
+          echo "📤 Pushe auf PR-Branch: ${TARGET_BRANCH}"
+          git push origin HEAD:"${TARGET_BRANCH}" || {
+            echo "⚠️ Konnte nicht pushen – möglicherweise Race Condition. Auto-Update der Doku wurde in diesem Run übersprungen."
             exit 0
           }
