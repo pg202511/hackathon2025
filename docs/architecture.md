@@ -149,10 +149,6 @@ The current architecture is intentionally simple and optimized for demonstration
 
 ## Related Work Items
 
-- **Jira Ticket (from branch):** [hd-15](https://gtd.endress.com/hd-15)
 - **Pull Request:**
-  - Title: new Hello RestController
-  - Description:
-
-    generated RestController
+  - Title: Update ui-playwright-azure-openai.yml
 
