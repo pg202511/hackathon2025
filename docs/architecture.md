@@ -3,205 +3,146 @@
   Please review and adapt it as needed.
 -->
 
-# hackathon2025 — Architecture and Technical Documentation
+# Hackathon2025 – Technical and Architectural Documentation
 
-This document describes the architecture, components, interactions, testing strategy and recommended CI/CD and AI-assisted workflows for the hackathon2025 Spring Boot demo application. It is intended to help new developers quickly understand the project and make safe extensions.
+This document was generated automatically based on the current source code and HTML templates. It provides a high-level overview of the architecture, components, endpoints and UI structure of the `hackathon2025` Spring Boot demo application.
 
-## 1. Introduction
+## Introduction
 
-hackathon2025 is a small Spring Boot web application that demonstrates:
-- A main Spring Boot application entry-point.
-- Several REST controllers exposing simple JSON endpoints.
-- A Thymeleaf-based HTML UI that consumes the REST APIs via client-side fetch calls.
+The `hackathon2025` project is a small Spring Boot web application used to demonstrate AI-assisted development workflows. It combines:
 
-The codebase is intentionally compact and focused on demo functionality (greeting endpoints, a Fibonacci calculator, and a small nature-image demo). It is a good basis for learning Spring Web, REST, and simple front-end integration.
+- A Java 17 / Spring Boot backend
 
-Assumption: There is no existing CI/CD or automated test configuration in the repository; recommendations in this document are proposals.
+- REST endpoints implemented in annotated controllers (e.g. `/api/hello`)
 
-## 2. Architecture Overview
+- Simple HTML/Thymeleaf-based views (e.g. `index.html`, additional pages)
 
-High-level structure:
-- Spring Boot application (com.example.hackathon2025).
-- Controllers expose REST endpoints under `/api/*` and a single MVC controller mapping `/` to a Thymeleaf template.
-- Front-end templates are server-side Thymeleaf (templates/index.html and templates/followup.html) but rely on browser-side JavaScript (fetch) to call REST endpoints and update the DOM.
+- Automatically generated unit tests (JUnit) and UI/API tests (Playwright)
 
-Runtime behavior:
-- Application starts with Hackathon2025Application (standard Spring Boot main class).
-- REST controllers handle HTTP GET requests and return JSON Maps. No explicit service or repository layers exist — controllers contain the logic.
-- Thymeleaf renders initial HTML pages; runtime interactions (button clicks) are implemented with fetch() calls to the REST endpoints.
+- CI pipelines that call Azure OpenAI to generate tests and documentation inside GitHub Actions
 
-Core concerns demonstrated:
-- HTTP routing and JSON REST responses.
-- Simple parameter handling (e.g., `@RequestParam`).
-- Minimal server-rendered HTML with client-side interaction.
 
-## 3. Components and Responsibilities
+## Architecture Overview
 
-Package: com.example.hackathon2025
+The application follows a typical Spring Boot architecture:
 
-Primary Java classes:
-- Hackathon2025Application.java
-  - Standard Spring Boot application bootstrap.
+- **Bootstrap / Application class** – starts the Spring context and embedded Tomcat.
+- **Controllers** – handle HTTP requests and either render views or return JSON responses.
+- **Templates** – HTML files under `src/main/resources/templates` that define the UI.
+- **REST APIs** – JSON endpoints under `/api/...` for programmatic access.
 
-- HelloRestController.java
-  - REST endpoints:
-    - GET /api/hello
-    - GET /api/hello2
-    - GET /api/hello3
-  - Returns simple message Maps (used for demo and UI tests).
 
-- GoodbyRestController.java
-  - REST endpoints:
-    - GET /api/goodby?name={name} (default "Gast")
-    - GET /api/goodnight
-  - Demonstrates `@RequestParam` and string composition.
+## Components and Responsibilities
 
-- NatureImageRestController.java
-  - REST endpoint:
-    - GET /api/nature-image?keyword={keyword}
-  - Maintains an in-memory Map of keywords -> image URL lists (picsum.photos).
-  - On request, selects a random image URL for the given keyword and returns JSON containing `keyword` and `imageUrl`.
+### Controllers
 
-- FibonacciRestController.java
-  - REST endpoint:
-    - GET /api/fibonacci?number={number}
-  - Validates number (non-negative) and returns the nth Fibonacci value computed iteratively.
-  - Returns error JSON if input is invalid.
+The following controllers were detected based on `@Controller` / `@RestController` annotations:
 
-- WebController.java
-  - MVC controller returning Thymeleaf template `index` for path `/`.
-  - Injects model attribute `title` used by the template.
+- `HelloRestController`  
+  - Package: `com.example.hackathon2025`  
+  - Source: `hackathon2025/HelloRestController.java`  
+  - Type: REST controller
+  - Endpoints:
+    - `GET` `/api/hello`
+    - `GET` `/api/hello2`
+    - `GET` `/api/hello3`
+- `GoodbyRestController`  
+  - Package: `com.example.hackathon2025`  
+  - Source: `hackathon2025/GoodbyRestController.java`  
+  - Type: REST controller
+  - Endpoints:
+    - `GET` `/api/goodby`
+    - `GET` `/api/goodnight`
+- `NatureImageRestController`  
+  - Package: `com.example.hackathon2025`  
+  - Source: `hackathon2025/NatureImageRestController.java`  
+  - Type: REST controller
+  - Endpoints:
+    - `GET` `/api/nature-image`
+- `WebController`  
+  - Package: `com.example.hackathon2025`  
+  - Source: `hackathon2025/WebController.java`  
+  - Type: MVC controller
+  - Endpoints:
+    - `GET` `/`
+- `FibonacciRestController`  
+  - Package: `com.example.hackathon2025`  
+  - Source: `hackathon2025/FibonacciRestController.java`  
+  - Type: REST controller
+  - Endpoints:
+    - `GET` `/api/fibonacci`
 
-Templates:
-- templates/index.html
-  - Main UI: shows title, a "Test REST" button to call /api/hello, and a nature-image search UI that calls `/api/nature-image`.
-  - Uses fetch() to request JSON and updates DOM (`img.src` etc).
+### HTML Templates
 
-- templates/followup.html
-  - Demo page with buttons to invoke Hello and Goodby controllers and display returned JSON.
+The following HTML templates were found under `src/main/resources/templates`:
 
-Design observations:
-- Controllers return Map instances (quick demo-friendly JSON). No DTO classes.
-- No persistent storage or service layer; logic is embedded in controllers.
-- No security, validation frameworks, exception handlers, or logging are present.
+- `followup.html` (path: `templates/followup.html`, main heading: "Followup REST API Demo")
+- `index.html` (path: `templates/index.html`, main heading: "Hackathon 2025 Demo")
 
-## 4. UI and REST Interaction
+## UI and REST Interaction
 
-Client-side interactions are implemented with fetch-based JavaScript in templates.
+The main entry page (`index.html`) is typically served at `GET /` by an MVC controller. It renders a heading, some descriptive text, and UI elements such as buttons.
 
-Example pattern used (index.html / followup.html):
-- Fetch an endpoint and parse JSON:
-  - const res = await fetch('/api/hello'); const j = await res.json();
-- Update DOM elements:
-  - document.getElementById('apiResult').innerText = JSON.stringify(j);
+Based on the existing code and templates, the core interaction pattern is:
 
-Available REST endpoints (summary):
-- GET /api/hello
-- GET /api/hello2
-- GET /api/hello3
-- GET /api/goodby?name={name}
-- GET /api/goodnight
-- GET /api/nature-image?keyword={keyword}
-- GET /api/fibonacci?number={number}
+1. The browser requests a view (e.g. `/`).
+2. A Spring MVC controller returns a view name (e.g. `index`), which is rendered by a Thymeleaf template.
+3. JavaScript on the page can call REST endpoints (e.g. `/api/hello`) via `fetch`.
+4. The JSON response from the REST controller is displayed in the UI (e.g. in a `<p id="apiResult">`).
 
-Example curl to call Fibonacci:
-- curl 'http://localhost:8080/api/fibonacci?number=10'
-Response (example): {"number":10,"fibonacci":55}
 
-Notes:
-- The UI is purely client-driven once the page loads — no WebSocket or server push.
-- Image URLs are external (picsum.photos); images are loaded directly by the browser.
+## Testing Strategy
 
-## 5. Testing Strategy
+The project is designed to showcase AI-assisted test generation. The typical setup is:
 
-Given the small size, adopt a layered test approach:
+- **JUnit 5 unit tests** under `src/test/java` for controllers and other classes.
+- Tests are generated or updated by a script `scripts/generate_tests_with_azure_openai.py`,
+  which calls Azure OpenAI to propose test cases.
+- **Playwright UI/API tests** in `tests/ui-hackathon2025.spec.ts`, generated by
+  `scripts/generate_ui_tests_with_azure_openai.py`.
+- Playwright tests cover:
+  - Rendering of the index page.
+  - Clicking the "Test REST" button and verifying the `/api/hello` JSON response.
+  - Direct HTTP calls to `/api/...` endpoints via Playwright's `request` fixture.
 
-Unit tests
-- Use JUnit 5 and Spring's MockMvc for controller unit tests.
-- Focus on: correct status codes, JSON structure, parameter handling, and edge cases (e.g., negative Fibonacci number).
-- Example assertions:
-  - GET /api/goodby without name uses "Gast".
-  - GET /api/fibonacci with negative number returns error key.
 
-Integration tests
-- Use @SpringBootTest with TestRestTemplate (or MockMvc with webEnvironment) to exercise real serialization and template rendering.
-- Validate Thymeleaf pages contain expected elements and that client endpoints return JSON.
+## CI/CD and AI-Assisted Workflows
 
-End-to-end / UI tests
-- Optional: Selenium/WebDriver tests to simulate clicking buttons on index.html and verifying image appears or JSON is displayed.
-- Alternatively, lightweight headless browser tests (Playwright) that assert the DOM update logic.
+GitHub Actions workflows orchestrate the build, test and documentation pipelines. Typical workflows include:
 
-Suggested test cases
-- nature-image: keyword not present -> returns seed URL.
-- Fibonacci: check boundary values (0,1,2) and moderate numbers for performance (e.g., 50).
-- Goodby: verify default and custom `name` parameter behavior.
+- **Java CI with Azure OpenAI test generation** – runs on pull requests to `main`:
+  - checks out the PR branch,
+  - runs `generate_tests_with_azure_openai.py` to create/update unit tests,
+  - executes `mvn clean verify`,
+  - and, if all tests pass, commits the updated tests back into the PR branch.
 
-Test automation best practices
-- Run all tests in CI on every PR.
-- Keep tests deterministic — mock randomization when needed (e.g., inject Random or use deterministic seed).
+- **Playwright UI/API tests with Azure OpenAI** – builds and starts the Spring Boot app, then:
+  - runs `generate_ui_tests_with_azure_openai.py` to update the Playwright tests,
+  - executes `npx playwright test`,
+  - and commits updated tests when the run is green.
 
-## 6. CI/CD and AI-Assisted Workflows
+- **Architecture docs generation** – runs `generate_docs_with_azure_openai.py` to generate
+  or update this `docs/architecture.md` file and commit it into the PR branch.
 
-CI/CD (recommended / assumed)
-- Although no pipeline files are present, a minimal GitHub Actions pipeline is recommended:
-  - Steps: checkout, set up JDK, mvn -B -DskipTests=false verify, build Docker image, push artifact/image on release branch.
-- Add policy: run unit tests, static analysis (SpotBugs, Checkstyle), and integration tests.
+All AI-generated artifacts (tests, docs) are treated as proposals in a pull request and are only merged into `main` after human review.
 
-Sample minimal GitHub Actions step (proposal):
-- name: Build and test
-  run: mvn -B -DskipTests=false verify
 
-Deployment suggestions
-- Containerize with a simple Dockerfile (maven build + JRE image) and push to a registry.
-- Deploy to any cloud platform (Heroku, AWS ECS, GCP Cloud Run) as a stateless service.
+## Limitations and Next Steps
 
-AI-Assisted Workflows
-- Use AI tools to accelerate:
-  - Generate unit/integration test scaffolding for controllers.
-  - Create PR descriptions and changelogs from commit diffs.
-  - Suggest refactorings (e.g., extracting service layer, adding DTOs).
-  - Auto-generate API documentation (OpenAPI/Swagger) from code annotations (quick stub generation).
-- Apply human review to AI outputs; treat them as suggestions and verify correctness.
+The current architecture is intentionally simple and optimized for demonstration purposes. Some typical limitations and potential improvements are:
 
-Security and compliance
-- Integrate automated dependency scanning (e.g., Dependabot, Snyk) into CI.
-- Use static analysis and code scanning tools as part of the pipeline.
+- No persistence layer (database) – all responses are in-memory / hard-coded.
 
-## 7. Limitations and Next Steps
+- Limited error handling and validation – real-world applications would need more robust handling of invalid requests, exceptions and security concerns.
 
-Current project limitations (observed in code)
-- No service/repository separation — controllers contain logic (Fibonacci, image selection).
-- No global error handling (e.g., @ControllerAdvice). Controllers return Map with "error" key — not standardized HTTP error responses.
-- No validation framework for inputs beyond simple checks in controller.
-- No authentication/authorization or rate limiting.
-- No structured logging or observability (metrics/tracing).
-- Fibonacci uses long and can overflow for large n; no bounds checking or protection.
-- External image URLs are fetched directly by the browser (no caching/proxying).
-- No CI/CD or infrastructure-as-code included in repo (assumption).
+- Controllers mix simple demo logic and HTTP handling; larger systems often introduce service layers and DTOs for better separation of concerns.
 
-Recommended next steps (prioritized)
-1. Introduce a service layer: move Fibonacci and image selection into services and add unit tests for them.
-2. Add standardized error handling with @ControllerAdvice and proper HTTP status codes.
-3. Add basic input validation (Spring Validation) and guardrails for expensive operations (limit max Fibonacci n).
-4. Add logging and simple health endpoints (Actuator) for production readiness.
-5. Add OpenAPI/Swagger annotations for API documentation and generate interactive docs.
-6. Implement CI pipeline (GitHub Actions) to run tests, static analysis, and produce artifacts.
-7. Add basic security (spring-boot-starter-security) if endpoints become non-demo and need protection.
+- AI-generated tests and documentation provide a good starting point but should always be reviewed, refined and extended by humans.
 
-Assumption: The repository is primarily a demo; the suggested next steps move it towards production-quality architecture while preserving the current demo behavior.
-
----
-
-If you need, I can:
-- Provide example unit test stubs for each controller using MockMvc.
-- Provide a starter GitHub Actions workflow and Dockerfile.
-- Propose a refactor plan to extract services and add proper error handling.
+- Future work could include: adding persistence, more complex domain logic, integration tests, API documentation (e.g. via OpenAPI/Swagger) and more detailed architecture diagrams.
 
 ## Related Work Items
 
 - **Pull Request:**
-  - Title: doc generator changed 2
-  - Description:
-
-    added jira issue link
+  - Title: chore: update AI-generated architecture docs (Azure OpenAI)
 
