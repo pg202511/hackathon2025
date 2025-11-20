@@ -11,6 +11,10 @@ Strategie:
   sehr kurz, keine Markdown-Überschriften), wird automatisch auf einen
   deterministischen Fallback-Generator zurückgegriffen, der aus dem Code
   eine Markdown-Doku zusammenbaut.
+- Am Ende der Doku wird eine Sektion "Related Work Items" mit
+  - Jira-Link (aus Branch-Name, z.B. feature/XXXX-1234-Blabla -> XXXX-1234)
+  - Pull-Request-Infos (Title + Description, aus GITHUB_EVENT_PATH)
+  angefügt.
 
 Erwartet (für den Azure-Teil) Umgebungsvariablen:
 - AZURE_OPENAI_ENDPOINT
@@ -453,6 +457,45 @@ def build_fallback_doc(java_files, templates) -> str:
     return "\n".join(lines)
 
 
+# ---------- Branch → Jira-Key & PR-Infos ----------
+
+def extract_jira_key_from_branch() -> str:
+    """
+    Liest den Branch-Namen aus den typischen CI-Env-Variablen und extrahiert
+    ein Jira-Key-Muster wie ABCD-1234 aus z.B. 'feature/ABCD-1234-Blabla'.
+    """
+    branch = os.environ.get("GITHUB_HEAD_REF") or os.environ.get("GITHUB_REF_NAME") or ""
+    branch = branch.strip()
+    if not branch:
+        return ""
+
+    m = re.search(r"([A-Za-z0-9]+-\d+)", branch)
+    if not m:
+        return ""
+    return m.group(1)
+
+
+def extract_pr_info_from_event() -> Dict[str, str]:
+    """
+    Liest PR-Titel und Body aus der GitHub-Event-Payload (GITHUB_EVENT_PATH),
+    falls der Workflow in einem Pull-Request-Kontext läuft.
+    """
+    event_path = os.environ.get("GITHUB_EVENT_PATH")
+    if not event_path or not os.path.exists(event_path):
+        return {"title": "", "body": ""}
+
+    try:
+        with open(event_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return {"title": "", "body": ""}
+
+    pr = data.get("pull_request") or {}
+    title = pr.get("title") or ""
+    body = pr.get("body") or ""
+    return {"title": title.strip(), "body": body.strip()}
+
+
 # ---------- main ----------
 
 def main() -> None:
@@ -494,6 +537,29 @@ def main() -> None:
     if used_fallback:
         md = build_fallback_doc(java_files, templates)
 
+    # 3) Jira-Key + PR-Infos holen
+    jira_key = extract_jira_key_from_branch()
+    pr_info = extract_pr_info_from_event()
+    pr_title = pr_info.get("title", "")
+    pr_body = pr_info.get("body", "")
+
+    footer_section = ""
+    if jira_key or pr_title or pr_body:
+        lines = []
+        lines.append("\n## Related Work Items\n")
+        if jira_key:
+            jira_url = f"https://gtd.endress.com/{jira_key}"
+            lines.append(f"- **Jira Ticket (from branch):** [{jira_key}]({jira_url})")
+        if pr_title or pr_body:
+            lines.append("- **Pull Request:**")
+            if pr_title:
+                lines.append(f"  - Title: {pr_title}")
+            if pr_body:
+                lines.append("  - Description:\n")
+                # Body direkt als Markdown-Text einfügen
+                lines.append(textwrap.indent(pr_body, "    "))
+        footer_section = "\n".join(lines) + "\n"
+
     docs_dir = repo_root / "docs"
     docs_dir.mkdir(parents=True, exist_ok=True)
     target_path = docs_dir / "architecture.md"
@@ -505,7 +571,8 @@ def main() -> None:
         "-->\n\n"
     )
 
-    target_path.write_text(header + md + "\n", encoding="utf-8")
+    content = header + md.rstrip() + "\n" + footer_section + "\n"
+    target_path.write_text(content, encoding="utf-8")
     print(f"[OK] Architektur-Dokumentation geschrieben: {target_path}")
 
 
